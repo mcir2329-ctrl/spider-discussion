@@ -263,3 +263,22 @@ test('CSV は BOM 付きで、カンマや引用符を含む値は囲む', () =>
   eq(csv.startsWith('﻿班,テーマ,'), true);
   eq(csv.split('\r\n')[1].startsWith('1班,"a,""b""",3,'), true);
 });
+
+test('CSV は = + - @ で始まる文字を数式として扱わせない', () => {
+  const s = played();
+  s.group = '=HYPERLINK("x")';
+  s.topic = '@a';
+  const row = csvForGroups([s]).split('\r\n')[1];
+  eq(row.startsWith(`"'=HYPERLINK(""x"")",'@a,3,`), true);
+});
+
+test('席の位置や名前が欠けたファイルは読み込まない', () => {
+  const noMembers = { ...toExport(played()), members: [], turns: [] };
+  eq(parseExport(JSON.stringify(noMembers)).error, '記録ファイルの中身が壊れています');
+  const noPos = toExport(played());
+  delete noPos.members[0].x;
+  eq(parseExport(JSON.stringify(noPos)).error, '記録ファイルの中身が壊れています');
+  const noName = toExport(played());
+  noName.members[1].name = 5;
+  eq(parseExport(JSON.stringify(noName)).error, '記録ファイルの中身が壊れています');
+});

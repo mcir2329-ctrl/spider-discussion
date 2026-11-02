@@ -30,6 +30,11 @@ function goHome() {
 }
 
 function goSetup() {
+  const pending = store.loadCurrent();
+  const question = pending?.status === 'ended'
+    ? `前回の記録（${pending.group}）は、新しい記録をはじめると消えます。「提出用に保存」は済んでいますか？`
+    : `終わっていない記録（${pending?.group}）は、新しい記録をはじめると消えます。続けますか？`;
+  if (pending && !confirm(question)) return;
   screen('./setup.js', 'renderSetup', {
     store,
     onStart: (session) => {

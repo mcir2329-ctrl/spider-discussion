@@ -21,6 +21,10 @@ export function renderTeacher(root, { onHome }) {
 
   async function load(files) {
     for (const { name, text } of await readFileTexts(files)) {
+      if (!name.toLowerCase().endsWith('.json')) {
+        errors.push({ fileName: name, error: '記録ファイル（.json）ではないので読み飛ばしました' });
+        continue;
+      }
       const r = parseExport(text);
       if (!r.ok) {
         errors.push({ fileName: name, error: r.error });

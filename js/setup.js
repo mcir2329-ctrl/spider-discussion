@@ -21,6 +21,7 @@ export function renderSetup(root, { store, onStart, onCancel }) {
   const form = h('div', { class: 'setup' });
   const preview = createSvg('web', 'preview');
   const error = h('p', { class: 'error' });
+  preview.addEventListener('contextmenu', (e) => e.preventDefault());
 
   root.append(h('header', { class: 'bar' }, h('button', { onClick: onCancel }, '← もどる'), h('h2', {}, '準備')), form);
 
@@ -29,6 +30,7 @@ export function renderSetup(root, { store, onStart, onCancel }) {
   }
 
   function startDrag(id, ev) {
+    if (ev.button !== 0) return;
     ev.preventDefault();
     const m = setup.members.find((x) => x.id === id);
     const move = (e) => {
@@ -40,9 +42,11 @@ export function renderSetup(root, { store, onStart, onCancel }) {
     const up = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
   }
 
   function field(label, key, placeholder) {

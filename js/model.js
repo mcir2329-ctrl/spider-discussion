@@ -215,6 +215,9 @@ export function parseExport(text) {
   if (!d || d.app !== APP_ID) return { ok: false, error: 'このアプリの記録ファイルではありません' };
   if (d.version !== FORMAT_VERSION) return { ok: false, error: `対応していない形式です（version ${d.version}）` };
   if (!Array.isArray(d.members) || !Array.isArray(d.types) || !Array.isArray(d.turns)) return { ok: false, error: BROKEN };
+  const okMember = (m) => m && typeof m.id === 'string' && typeof m.name === 'string'
+    && Number.isFinite(m.x) && Number.isFinite(m.y);
+  if (!d.members.length || !d.members.every(okMember)) return { ok: false, error: BROKEN };
   const ids = new Set(d.members.map((m) => m.id));
   const bad = d.turns.some((t) => !ids.has(t.member) || typeof t.start !== 'number' || typeof t.duration !== 'number');
   if (bad || typeof d.totalSeconds !== 'number') return { ok: false, error: BROKEN };
@@ -240,7 +243,8 @@ export function compareRows(sessions) {
 }
 
 const csvCell = (v) => {
-  const text = String(v);
+  // 表計算ソフトが = + - @ で始まる文字を数式として実行しないよう、先頭に ' を付ける
+  const text = typeof v === 'string' && /^[=+\-@]/.test(v) ? `'${v}` : String(v);
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 };
 
