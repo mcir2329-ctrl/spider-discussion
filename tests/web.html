@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>図の確認</title>
+<style>
+  body { font-family: system-ui, sans-serif; padding: 16px; background: #f6f7f9; }
+  svg { display: block; width: 640px; aspect-ratio: 1000 / 625; border: 1px solid #d5dbe2; margin-bottom: 16px; }
+  img { width: 640px; border: 1px solid #d5dbe2; }
+</style>
+</head>
+<body>
+<h2>記録中（最後の線を強調）</h2><div id="live"></div>
+<h2>結果（発言0回を強調、見出し付き）</h2><div id="result"></div>
+<h2>準備（回数なし）</h2><div id="preview"></div>
+<button id="png">PNG にする</button><div id="out"></div>
+<script type="module">
+  import { createSession, DEFAULT_TYPES, layoutPositions, start, addTurn, setTurnType } from '../js/model.js';
+  import { createSvg, renderWeb, svgToPngBlob } from '../js/web.js';
+
+  const names = ['12', '3', 'たなか', '25', 'さとう花子', '7'];
+  const members = layoutPositions('circle', 6).map((p, i) => ({ id: `m${i + 1}`, name: names[i], ...p }));
+  const s = start(createSession({ group: '3班', topic: '制服は必要か', date: '2026-11-03', layout: 'circle', members, types: DEFAULT_TYPES }), 0);
+  const plan = [['m1', 't1'], ['m2', 't2'], ['m1', null], ['m3', 't3'], ['m2', 't4'], ['m1', 't1'], ['m4', 't5']];
+  plan.forEach(([m, t], i) => { addTurn(s, m, i * 10000); if (t) setTurnType(s, t); });
+
+  const put = (id, opts) => { const svg = createSvg(); renderWeb(svg, s, opts); document.getElementById(id).append(svg); return svg; };
+  put('live', { highlightLast: true });
+  const resultSvg = put('result', { markSilent: true, caption: '3班　制服は必要か　2026-11-03' });
+  put('preview', { showCounts: false });
+
+  document.getElementById('png').onclick = async () => {
+    const img = new Image();
+    img.src = URL.createObjectURL(await svgToPngBlob(resultSvg));
+    document.getElementById('out').replaceChildren(img);
+  };
+</script>
+</body>
+</html>
