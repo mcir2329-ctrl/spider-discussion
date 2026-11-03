@@ -53,7 +53,15 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; color:
 .web.disabled .seat { opacity: 0.55; }
 .web.preview { max-width: 640px; align-self: center; }
 .stage { display: flex; justify-content: center; padding: 8px 16px; }
-.stage .web.live { width: min(100%, calc((100vh - 240px) * 1.6)); }
+.stage .web.live { width: min(100%, calc((100vh - 285px) * 1.6)); }
+
+.steps-bar { list-style: none; margin: 0; padding: 6px 16px; display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; background: var(--panel); border-bottom: 1px solid var(--line); }
+.steps-bar li { display: flex; align-items: center; gap: 6px; padding: 4px 12px 4px 4px; border-radius: 999px; font-size: 14px; color: var(--muted); background: #f1f4f8; }
+.steps-bar .num { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; background: #d5dbe2; color: var(--ink); }
+.steps-bar li.now { background: #ffe8a3; color: var(--ink); font-weight: 700; }
+.steps-bar li.now .num { background: var(--accent); color: var(--accent-ink); }
+.steps-bar li.done { opacity: 0.7; }
+.steps-bar li.done .num { background: #1f9d55; color: #fff; }
 
 .type-bar { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; align-items: center; padding: 4px 16px; min-height: 56px; }
 .type-bar .type { border: 2px solid var(--c); color: var(--c); background: #fff; font-weight: 600; }

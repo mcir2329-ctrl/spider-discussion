@@ -1,7 +1,7 @@
 import { h, setChildren } from './dom.js';
 import { start, pause, resume, addTurn, setTurnType, undo, end, elapsed, formatSeconds } from './model.js';
 import { createSvg, renderWeb } from './web.js';
-import { guideButton, showGuideOnce } from './guide.js';
+import { guideButton, showGuideOnce, recordSteps } from './guide.js';
 
 const DOUBLE_TAP_MS = 600; // 同じ席をこれより短い間隔で続けて押したときは押し間違いとみなす
 const SLEEP_GAP_MS = 90000; // タイマーがこれ以上止まっていたら、ふたを閉じるなどで端末が休止していたとみなす
@@ -11,6 +11,7 @@ export function renderRecord(root, session, { store, onEnd, onHome }) {
   const timer = h('span', { class: 'timer' });
   const typeBar = h('div', { class: 'type-bar' });
   const controls = h('div', { class: 'controls' });
+  const stepsBar = h('ol', { class: 'steps-bar', 'aria-label': '入力のしかた' });
   const warn = h('p', { class: 'warn', hidden: true }, 'この端末に保存できませんでした。終了後、すぐに「提出用に保存」をしてください。');
   const sleepNote = h('p', { class: 'warn', hidden: true }, '画面がしばらく止まっていたので、その間の時間は数えずに一時停止しました。討論が続いていれば「再開」を押してください。');
   const nameOf = (id) => session.members.find((m) => m.id === id)?.name ?? '';
@@ -25,6 +26,7 @@ export function renderRecord(root, session, { store, onEnd, onHome }) {
       h('h2', {}, `${session.group}　${session.topic}`),
       timer,
       guideButton('record')),
+    stepsBar,
     warn,
     sleepNote,
     h('div', { class: 'stage' }, svg),
@@ -85,6 +87,8 @@ export function renderRecord(root, session, { store, onEnd, onHome }) {
     svg.classList.toggle('disabled', session.status !== 'running');
     if (session.status === 'running') sleepNote.hidden = true;
     drawTypeBar();
+    stepsBar.replaceChildren(...recordSteps(session).map((st, i) => h('li', { class: st.state },
+      h('span', { class: 'num' }, st.state === 'done' ? '✓' : String(i + 1)), st.text)));
     const { status } = session;
     setChildren(controls,
       status === 'ready' ? h('button', { class: 'big primary', onClick: () => act(() => start(session, Date.now())) }, '開始') : null,

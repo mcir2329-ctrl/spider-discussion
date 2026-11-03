@@ -92,6 +92,20 @@ export function openGuide(name, { remote = false } = {}) {
   return dlg;
 }
 
+// 記録画面に常に出す手順バーの中身。state は done（済み）／now（今の手順）／next（これから）
+export function recordSteps(s) {
+  const last = s.turns[s.turns.length - 1];
+  const started = s.status !== 'ready';
+  return [
+    s.status === 'paused'
+      ? { text: '「再開」を押す', state: 'now' }
+      : { text: '「開始」を押す', state: started ? 'done' : 'now' },
+    { text: '話した人の席をタップ', state: s.status === 'running' ? 'now' : 'next' },
+    { text: '発言の種類を選ぶ（なくてもよい）', state: !last || s.status === 'ready' ? 'next' : last.type ? 'done' : 'now' },
+    { text: '終わったら「終了」', state: 'next' },
+  ];
+}
+
 export function guideButton(name, options) {
   return h('button', { class: 'guide-btn', onClick: () => openGuide(name, options) }, '？ 使い方');
 }
