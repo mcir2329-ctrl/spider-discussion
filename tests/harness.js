@@ -10,13 +10,15 @@ export function eq(actual, expected, msg = '') {
   if (a !== e) throw new Error(`${msg} expected ${e} but got ${a}`);
 }
 
-export function run() {
-  return tests.map(({ name, fn }) => {
+export async function run() {
+  const results = [];
+  for (const { name, fn } of tests) {
     try {
-      fn();
-      return { name, ok: true };
+      await fn();
+      results.push({ name, ok: true });
     } catch (err) {
-      return { name, ok: false, error: err.message };
+      results.push({ name, ok: false, error: err.message });
     }
-  });
+  }
+  return results;
 }

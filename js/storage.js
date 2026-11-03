@@ -1,5 +1,6 @@
 const CURRENT = 'spider.current';
 const SETUPS = 'spider.setups';
+const OUTBOX = 'spider.outbox';
 export const MAX_SETUPS = 10;
 
 function defaultBackend() {
@@ -42,6 +43,12 @@ export function createStore(backend = defaultBackend()) {
       const others = read(SETUPS, []).filter((x) => x.group !== setup.group);
       return write(SETUPS, [setup, ...others].slice(0, MAX_SETUPS));
     },
+    listOutbox: () => read(OUTBOX, []),
+    addOutbox(record) {
+      const others = read(OUTBOX, []).filter((r) => r.id !== record.id);
+      return write(OUTBOX, [...others, record]);
+    },
+    removeOutbox: (id) => write(OUTBOX, read(OUTBOX, []).filter((r) => r.id !== id)),
   };
 }
 

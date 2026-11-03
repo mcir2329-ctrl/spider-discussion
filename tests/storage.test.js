@@ -47,6 +47,17 @@ test('準備の設定は新しい順で、同じ班名は置き換える', () =>
   eq(store.listSetups(), [{ group: 'A', topic: 'y' }, { group: 'B', topic: 'z' }]);
 });
 
+test('送信待ちは記録番号ごとに 1 件で、送れたものを消せる', () => {
+  const store = createStore(fakeBackend());
+  eq(store.listOutbox(), []);
+  store.addOutbox({ id: 'a', v: 1 });
+  store.addOutbox({ id: 'b', v: 1 });
+  store.addOutbox({ id: 'a', v: 2 });
+  eq(store.listOutbox(), [{ id: 'b', v: 1 }, { id: 'a', v: 2 }]);
+  store.removeOutbox('b');
+  eq(store.listOutbox(), [{ id: 'a', v: 2 }]);
+});
+
 test(`準備の設定は最大 ${MAX_SETUPS} 件で、古いものから消える`, () => {
   const store = createStore(fakeBackend());
   for (let i = 0; i < 12; i++) store.saveSetup({ group: `g${i}` });

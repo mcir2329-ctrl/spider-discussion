@@ -1,7 +1,10 @@
 import { h } from './dom.js';
-import { reopen, memberStats, groupStats, toExport, fileBaseName, formatSeconds } from './model.js';
+import { reopen, memberStats, groupStats, toExport, fileBaseName, formatSeconds, ensureId } from './model.js';
 import { createSvg, renderWeb, svgToPngBlob } from './web.js';
 import { downloadText, downloadBlob } from './storage.js';
+import { flushOutbox } from './remote.js';
+
+const STATUS_CHECK_MS = 5000;
 
 export function memberTable(session, stats) {
   return h('table', { class: 'stats' },
@@ -13,21 +16,53 @@ export function memberTable(session, stats) {
       ...session.types.map((t) => h('td', {}, m.byType[t.id] || 0))))));
 }
 
-export function renderResult(root, session, { store, onBack, onHome }) {
+export function renderResult(root, session, { store, remote = null, onBack, onHome }) {
   const svg = createSvg('web');
   renderWeb(svg, session, { markSilent: true, caption: `${session.group}　${session.topic}　${session.date}` });
   const g = groupStats(session, 0);
   const status = h('p', { class: 'hint' });
+  const sendStatus = h('p', { class: 'send-status' });
+  const resendButton = h('button', { hidden: true, onClick: () => send() }, 'もう一度送る');
 
   async function saveFiles() {
     const base = fileBaseName(session);
     downloadText(`${base}.json`, JSON.stringify(toExport(session), null, 2), 'application/json');
     try {
       downloadBlob(`${base}.png`, await svgToPngBlob(svg));
-      status.textContent = `「${base}.json」と「${base}.png」を保存しました。ダウンロードフォルダから Classroom に添付して提出してください。`;
+      status.textContent = remote
+        ? `「${base}.json」と「${base}.png」を保存しました（予備の控えです）。`
+        : `「${base}.json」と「${base}.png」を保存しました。ダウンロードフォルダから Classroom に添付して提出してください。`;
     } catch (err) {
       status.textContent = `記録ファイルは保存しましたが、画像を作れませんでした（${err.message}）。`;
     }
+  }
+
+  const isUnsent = () => store.listOutbox().some((r) => r.id === session.id);
+
+  function showSendStatus(error = null) {
+    const unsent = isUnsent();
+    sendStatus.className = unsent ? 'send-status pending' : 'send-status done';
+    sendStatus.textContent = unsent
+      ? `送信待ち：通信がつながると自動で先生に送ります。${error ? `（${error}）` : ''}`
+      : '✓ 先生に送りました';
+    resendButton.hidden = !unsent;
+  }
+
+  async function send() {
+    sendStatus.className = 'send-status pending';
+    sendStatus.textContent = '先生に送っています…';
+    const r = await flushOutbox(store, remote);
+    showSendStatus(r.error);
+  }
+
+  let checkId = null;
+  if (remote) {
+    // 番号のない古い記録にも番号を付けてから送信待ちに入れる。同じ番号なら Google 側で上書きされる
+    ensureId(session);
+    store.saveCurrent(session);
+    store.addOutbox(toExport(session));
+    send();
+    checkId = setInterval(() => showSendStatus(), STATUS_CHECK_MS);
   }
 
   root.append(
@@ -41,8 +76,9 @@ export function renderResult(root, session, { store, onBack, onHome }) {
           h('li', {}, `いちばん多い人：${g.maxCount}回／いちばん少ない人：${g.minCount}回`),
           h('li', { class: g.silentCount ? 'alert' : null }, `発言0回の人：${g.silentCount}人`)),
         memberTable(session, memberStats(session, 0)),
+        remote ? h('div', { class: 'row' }, sendStatus, resendButton) : null,
         h('div', { class: 'row' },
-          h('button', { class: 'big primary', onClick: saveFiles }, '提出用に保存'),
+          h('button', { class: remote ? 'big' : 'big primary', onClick: saveFiles }, remote ? 'ファイルにも保存' : '提出用に保存'),
           h('button', {
             onClick: () => {
               reopen(session);
@@ -51,4 +87,6 @@ export function renderResult(root, session, { store, onBack, onHome }) {
             },
           }, '記録に戻る')),
         status)));
+
+  return () => clearInterval(checkId);
 }

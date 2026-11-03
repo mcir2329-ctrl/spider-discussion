@@ -17,8 +17,9 @@
   import { run } from './harness.js';
   import './model.test.js';
   import './storage.test.js';
+  import './remote.test.js';
 
-  const results = run();
+  const results = await run();
   const failed = results.filter((r) => !r.ok).length;
   document.getElementById('summary').textContent = `${results.length - failed}/${results.length} passed`;
   for (const r of results) {

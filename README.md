@@ -29,6 +29,36 @@
 
 アプリを更新したときは、`sw.js` の `CACHE` の値（`spider-v1`）を `spider-v2` のように変えてからアップロードする。
 
+## 記録を先生のドライブに自動で集める（Apps Script 版）
+
+記録係が「終了」すると、記録が先生のスプレッドシートに自動で届きます。
+先生は「教師として使う」で日付を選ぶと、その日の全班の記録を見られます。
+学校の Google アカウントでログインしている人だけが開け、記録を読み出せるのは先生だけです。
+
+### 最初に 1 回だけ行う準備（貼り付け方式）
+1. `npm run build:gas` を実行する（`gas/build/` に `index.html` と `Code.gs` ができる）。
+2. 学校のアカウントで Google スプレッドシートを新しく作る（名前の例：「スパイダー討論 記録」）。
+3. メニューの「拡張機能」→「Apps Script」を開く。
+4. 左の「コード.gs」の中身をすべて消し、`gas/build/Code.gs` の中身を貼り付ける。
+5. 左の「ファイル」の「＋」→「HTML」で、名前を `index` にして作り、中身をすべて消して `gas/build/index.html` の中身を貼り付ける。
+6. 左の歯車「プロジェクトの設定」で「『appsscript.json』マニフェスト ファイルをエディタで表示する」にチェックを入れ、
+   エディタに出た `appsscript.json` の中身を `gas/build/appsscript.json` の中身に置き換える。
+7. 保存（Ctrl+S）する。
+8. 右上の「デプロイ」→「新しいデプロイ」→ 種類の歯車で「ウェブアプリ」を選ぶ。
+   - 次のユーザーとして実行：自分
+   - アクセスできるユーザー：（学校名）内の全員
+9. 「デプロイ」を押し、アクセスの承認を求められたら自分の学校アカウントで許可する。
+10. 表示された「ウェブアプリの URL」（`https://script.google.com/a/macros/…/exec`）を Classroom で生徒に配る。
+
+### アプリを更新したとき
+1. `npm run build:gas` を実行し、手順 4〜5 と同じように `Code.gs` と `index` の中身を貼り替えて保存する。
+2. 「デプロイ」→「デプロイを管理」→ 鉛筆のアイコン →「バージョン」を「新バージョン」にして「デプロイ」。URL は変わらない。
+
+### clasp で入れる場合（Apps Script API が使えるとき）
+https://script.google.com/home/usersettings で「Google Apps Script API」をオンにしてから：
+`npx @google/clasp login` → `npx @google/clasp create-script --type sheets --title "スパイダー討論 記録" --rootDir gas/build`
+→ `npm run build:gas` → `npx @google/clasp push -f` → `npx @google/clasp create-deployment`
+
 ## 開発
 - テスト：`npm test`（ブラウザでは `tests/index.html`）
 - 確認用サーバー：`npm run serve` → `http://localhost:8080/`

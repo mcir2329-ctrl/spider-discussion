@@ -3,7 +3,7 @@ import {
   formatSeconds, todayString, DEFAULT_TYPES, layoutPositions, createSession,
   elapsed, start, pause, resume, addTurn, setTurnType, undo, end, reopen,
   edges, lastEdge, memberStats, groupStats, typeShares,
-  toExport, parseExport, fileBaseName, compareRows, csvForGroups,
+  toExport, parseExport, fileBaseName, compareRows, csvForGroups, ensureId,
 } from '../js/model.js';
 
 test('formatSeconds は 分:秒 にする', () => {
@@ -215,7 +215,7 @@ test('種類ごとの割合は種類の名前で返す', () => {
 
 test('書き出しには記録中だけの項目を含めない', () => {
   eq(Object.keys(toExport(played())), [
-    'app', 'version', 'group', 'topic', 'date', 'layout', 'members', 'types', 'turns', 'startedAt', 'totalSeconds',
+    'app', 'version', 'id', 'group', 'topic', 'date', 'layout', 'members', 'types', 'turns', 'startedAt', 'totalSeconds',
   ]);
 });
 
@@ -270,6 +270,34 @@ test('CSV は = + - @ で始まる文字を数式として扱わせない', () =
   s.topic = '@a';
   const row = csvForGroups([s]).split('\r\n')[1];
   eq(row.startsWith(`"'=HYPERLINK(""x"")",'@a,3,`), true);
+});
+
+test('記録には固有の番号が付き、書き出し・読み込みで保たれる', () => {
+  const a = mk();
+  const b = mk();
+  eq(typeof a.id, 'string');
+  eq(a.id.length >= 8, true);
+  eq(a.id === b.id, false);
+  const r = parseExport(JSON.stringify(toExport(played())));
+  eq(typeof r.session.id, 'string');
+});
+
+test('番号のない古い記録も読み込め、ensureId で番号を付けられる', () => {
+  const old = toExport(played());
+  delete old.id;
+  const r = parseExport(JSON.stringify(old));
+  eq(r.ok, true);
+  eq(r.session.id, undefined);
+  ensureId(r.session);
+  eq(typeof r.session.id, 'string');
+  const keep = r.session.id;
+  ensureId(r.session);
+  eq(r.session.id, keep);
+});
+
+test('番号が文字でない記録は読み込まない', () => {
+  const bad = { ...toExport(played()), id: 5 };
+  eq(parseExport(JSON.stringify(bad)).error, '記録ファイルの中身が壊れています');
 });
 
 test('席の位置や名前が欠けたファイルは読み込まない', () => {

@@ -47,10 +47,20 @@ export function layoutPositions(layout, count) {
   }));
 }
 
+const newId = () => globalThis.crypto?.randomUUID?.()
+  ?? `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
+
+// 番号のない古い記録（自動収集の前に作ったもの）に番号を付ける
+export function ensureId(s) {
+  if (!s.id) s.id = newId();
+  return s;
+}
+
 export function createSession({ group, topic, date, layout, members, types }) {
   return {
     app: APP_ID,
     version: FORMAT_VERSION,
+    id: newId(),
     group,
     topic,
     date,
@@ -196,7 +206,7 @@ export function typeShares(s) {
   return out;
 }
 
-const EXPORT_KEYS = ['app', 'version', 'group', 'topic', 'date', 'layout', 'members', 'types', 'turns', 'startedAt', 'totalSeconds'];
+const EXPORT_KEYS = ['app', 'version', 'id', 'group', 'topic', 'date', 'layout', 'members', 'types', 'turns', 'startedAt', 'totalSeconds'];
 const BROKEN = '記録ファイルの中身が壊れています';
 
 export function toExport(s) {
@@ -215,6 +225,7 @@ export function parseExport(text) {
   if (!d || d.app !== APP_ID) return { ok: false, error: 'このアプリの記録ファイルではありません' };
   if (d.version !== FORMAT_VERSION) return { ok: false, error: `対応していない形式です（version ${d.version}）` };
   if (!Array.isArray(d.members) || !Array.isArray(d.types) || !Array.isArray(d.turns)) return { ok: false, error: BROKEN };
+  if (d.id !== undefined && typeof d.id !== 'string') return { ok: false, error: BROKEN };
   const okMember = (m) => m && typeof m.id === 'string' && typeof m.name === 'string'
     && Number.isFinite(m.x) && Number.isFinite(m.y);
   if (!d.members.length || !d.members.every(okMember)) return { ok: false, error: BROKEN };
