@@ -35,31 +35,22 @@
 先生は「教師として使う」で日付を選ぶと、その日の全班の記録を見られます。
 学校の Google アカウントでログインしている人だけが開け、記録を読み出せるのは先生だけです。
 
-### 最初に 1 回だけ行う準備（貼り付け方式）
-1. `npm run build:gas` を実行する（`gas/build/` に `index.html` と `Code.gs` ができる）。
-2. 学校のアカウントで Google スプレッドシートを新しく作る（名前の例：「スパイダー討論 記録」）。
-3. メニューの「拡張機能」→「Apps Script」を開く。
-4. 左の「コード.gs」の中身をすべて消し、`gas/build/Code.gs` の中身を貼り付ける。
-5. 左の「ファイル」の「＋」→「HTML」で、名前を `index` にして作り、中身をすべて消して `gas/build/index.html` の中身を貼り付ける。
-6. 左の歯車「プロジェクトの設定」で「『appsscript.json』マニフェスト ファイルをエディタで表示する」にチェックを入れ、
-   エディタに出た `appsscript.json` の中身を `gas/build/appsscript.json` の中身に置き換える。
-7. 保存（Ctrl+S）する。
-8. 右上の「デプロイ」→「新しいデプロイ」→ 種類の歯車で「ウェブアプリ」を選ぶ。
-   - 次のユーザーとして実行：自分
-   - アクセスできるユーザー：（学校名）内の全員
-9. 「デプロイ」を押し、アクセスの承認を求められたら自分の学校アカウントで許可する。
-10. 表示された「ウェブアプリの URL」（`https://script.google.com/a/macros/…/exec`）を Classroom で生徒に配る。
+### 準備（最初の 1 回だけ）
+公開サイトの設置ページの手順に沿って進めます。特別な設定やソフトは要りません。
+https://mcir2329-ctrl.github.io/spider-discussion/setup.html
+
+1. 学校のアカウントで Google スプレッドシートを新しく作る。
+2. 「拡張機能」→「Apps Script」を開く。
+3. 設置ページの「コードをコピー」を押し、Apps Script に貼り付けて保存する（貼るのはこの 1 つだけ）。
+4. 「デプロイ」→「新しいデプロイ」→「ウェブアプリ」。実行：自分／アクセス：（学校名）内の全員。
+5. 表示された URL を Classroom で生徒に配る。
 
 ### アプリを更新したとき
-1. `npm run build:gas` を実行し、手順 4〜5 と同じように `Code.gs` と `index` の中身を貼り替えて保存する。
-2. 「デプロイ」→「デプロイを管理」→ 鉛筆のアイコン →「バージョン」を「新バージョン」にして「デプロイ」。URL は変わらない。
-
-### clasp で入れる場合（Apps Script API が使えるとき）
-https://script.google.com/home/usersettings で「Google Apps Script API」をオンにしてから：
-`npx @google/clasp login` → `npx @google/clasp create-script --type sheets --title "スパイダー討論 記録" --rootDir gas/build`
-→ `npm run build:gas` → `npx @google/clasp push -f` → `npx @google/clasp create-deployment`
+1. `npm run build:gas` を実行して `deploy/apps-script.txt` を作り直し、GitHub に公開する。
+2. 設置ページの「コードをコピー」で貼り替えて保存し、「デプロイ」→「デプロイを管理」→ 鉛筆のアイコン →「バージョン」を「新バージョン」にして「デプロイ」。URL は変わらない。
 
 ## 開発
 - テスト：`npm test`（ブラウザでは `tests/index.html`）
 - 確認用サーバー：`npm run serve` → `http://localhost:8080/`
 - 図の見た目の確認：`http://localhost:8080/tests/web.html`
+- Apps Script 版の手元確認：`npm run build:gas` のあと `http://localhost:8080/gas/build/preview.html`

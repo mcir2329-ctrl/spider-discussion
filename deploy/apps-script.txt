@@ -1,0 +1,391 @@
+/** @OnlyCurrentDoc */
+// スパイダー討論：記録を先生のスプレッドシートに集める Apps Script。
+// ウェブアプリとして「実行するユーザー：自分」「アクセス：学校のドメインの全員」で公開する。
+
+var SHEET_NAME = '記録';
+var HEADERS = ['受信日時', '日付', '班', 'テーマ', '送信者', '記録ID', '記録'];
+var MAX_JSON = 45000; // セルの上限は 50,000 文字
+var COL_DATE = 2;
+var COL_ID = 6;
+
+function doGet() {
+  return HtmlService.createHtmlOutput(INDEX_HTML.join(''))
+    .setTitle('スパイダー討論')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
+function sheet_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(SHEET_NAME);
+  if (!sh) {
+    sh = ss.insertSheet(SHEET_NAME);
+    sh.appendRow(HEADERS);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+// 先頭に ' を付けると、日付への自動変換や数式としての実行が起きない
+function text_(v) {
+  return "'" + String(v);
+}
+
+function untext_(v) {
+  return String(v).replace(/^'/, '');
+}
+
+function valid_(d) {
+  return !!d && d.app === 'spider-discussion' && d.version === 1
+    && typeof d.id === 'string' && d.id.length > 0 && d.id.length <= 64
+    && typeof d.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.date)
+    && typeof d.group === 'string' && typeof d.topic === 'string'
+    && Array.isArray(d.members) && Array.isArray(d.types) && Array.isArray(d.turns);
+}
+
+function isTeacher() {
+  var me = Session.getActiveUser().getEmail();
+  return me !== '' && me === Session.getEffectiveUser().getEmail();
+}
+
+function requireTeacher_() {
+  if (!isTeacher()) throw new Error('先生のアカウントでのみ使えます');
+}
+
+function submitRecord(text) {
+  if (typeof text !== 'string') return { ok: false, error: '記録を読めません' };
+  if (text.length > MAX_JSON) return { ok: false, error: '記録が大きすぎます' };
+  var d;
+  try {
+    d = JSON.parse(text);
+  } catch (e) {
+    return { ok: false, error: '記録を読めません' };
+  }
+  if (!valid_(d)) return { ok: false, error: '記録の形式が正しくありません' };
+
+  var row = [new Date(), text_(d.date), text_(d.group), text_(d.topic),
+    text_(Session.getActiveUser().getEmail()), text_(d.id), text];
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var sh = sheet_();
+    var last = sh.getLastRow();
+    var ids = last > 1 ? sh.getRange(2, COL_ID, last - 1, 1).getValues() : [];
+    for (var i = 0; i < ids.length; i++) {
+      if (untext_(ids[i][0]) === d.id) {
+        sh.getRange(i + 2, 1, 1, row.length).setValues([row]);
+        return { ok: true };
+      }
+    }
+    sh.appendRow(row);
+    return { ok: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function rows_() {
+  var sh = sheet_();
+  var last = sh.getLastRow();
+  return last > 1 ? sh.getRange(2, 1, last - 1, HEADERS.length).getValues() : [];
+}
+
+function listDates() {
+  requireTeacher_();
+  var counts = {};
+  rows_().forEach(function (r) {
+    var date = untext_(r[COL_DATE - 1]);
+    counts[date] = (counts[date] || 0) + 1;
+  });
+  return Object.keys(counts).sort().reverse().map(function (date) {
+    return { date: date, count: counts[date] };
+  });
+}
+
+function getRecords(date) {
+  requireTeacher_();
+  return rows_().filter(function (r) {
+    return untext_(r[COL_DATE - 1]) === date;
+  }).map(function (r) {
+    return {
+      receivedAt: r[0] instanceof Date ? r[0].toISOString() : String(r[0]),
+      submitter: untext_(r[4]),
+      json: String(r[6]),
+    };
+  });
+}
+
+// 画面の HTML（npm run build:gas で作られる。直接は編集しない）
+var INDEX_HTML = [
+  "<!doctype html>\n<html lang=\"ja\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>スパイダー討論</title>\n<meta name=\"theme-color\" content=\"#1d3557\">\n<",
+  "style>\n:root {\n  --ink: #1d2733;\n  --muted: #5b6673;\n  --line: #d5dbe2;\n  --bg: #f6f7f9;\n  --panel: #ffffff;\n  --accent: #1d3557;\n  --accent-ink: #ffffff;\n  --danger: #c0392b;\n  --alert: #d64545;\n}\n* ",
+  "{ box-sizing: border-box; }\nhtml, body { margin: 0; min-height: 100%; }\nbody { background: var(--bg); color: var(--ink); font-family: system-ui, \"Noto Sans JP\", sans-serif; font-size: 16px; }\n#app { m",
+  "in-height: 100vh; display: flex; flex-direction: column; }\n\nbutton, .button {\n  font: inherit; min-height: 44px; padding: 0 16px; border: 1px solid var(--line); border-radius: 8px;\n  background: var(-",
+  "-panel); color: var(--ink); cursor: pointer;\n  display: inline-flex; align-items: center; justify-content: center; gap: 6px;\n}\nbutton:disabled { opacity: 0.4; cursor: default; }\nbutton.primary { backg",
+  "round: var(--accent); color: var(--accent-ink); border-color: var(--accent); }\nbutton.danger { color: var(--danger); border-color: var(--danger); }\nbutton.big { min-height: 56px; font-size: 18px; padd",
+  "ing: 0 24px; }\ninput, select { font: inherit; min-height: 40px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); }\nlabel { display: flex; flex-",
+  "direction: column; gap: 4px; font-size: 14px; color: var(--muted); }\n.row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }\n.row.end { justify-content: flex-end; }\n.hint { color: var",
+  "(--muted); font-size: 14px; margin: 0; }\n.error { color: var(--danger); min-height: 1.2em; margin: 0; }\n.warn { margin: 0; padding: 8px 16px; background: #fdecea; color: var(--danger); }\n.alert { colo",
+  "r: var(--alert); font-weight: 600; }\n\n.bar { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }\n.bar h2 { margin: 0; fo",
+  "nt-size: 18px; flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }\n.timer { font-variant-numeric: tabular-nums; font-size: 22px; font-weight: 600; }\n\n.home { width: 100%; max-wi",
+  "dth: 640px; margin: 10vh auto 0; padding: 0 16px; text-align: center; }\n.home h1 { font-size: 32px; }\n.home-buttons { display: flex; flex-direction: column; gap: 16px; margin-top: 32px; }\n.notice { ba",
+  "ckground: #fff7e0; border: 1px solid #f0d58a; border-radius: 8px; padding: 12px 16px; text-align: left; }\n\n.setup { width: 100%; max-width: 960px; margin: 0 auto; padding: 16px; display: flex; flex-di",
+  "rection: column; gap: 12px; }\n.setup h3 { margin: 12px 0 0; font-size: 16px; }\n.names { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }\n.types { display: flex;",
+  " flex-direction: column; gap: 8px; align-items: flex-start; }\n.type-row input[type=\"color\"] { width: 48px; padding: 2px; }\n\n.web { display: block; width: 100%; aspect-ratio: 1000 / 625; background: #f",
+  "ff; border: 1px solid var(--line); border-radius: 8px; user-select: none; }\n.web.live, .web.preview { touch-action: none; }\n.web.live .seat, .web.preview .seat { cursor: pointer; }\n.web.disabled .seat",
+  " { opacity: 0.55; }\n.web.preview { max-width: 640px; align-self: center; }\n.stage { display: flex; justify-content: center; padding: 8px 16px; }\n.stage .web.live { width: min(100%, calc((100vh - 285px",
+  ") * 1.6)); }\n\n.steps-bar { list-style: none; margin: 0; padding: 6px 16px; display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; background: var(--panel); border-bottom: 1px solid var(--l",
+  "ine); }\n.steps-bar li { display: flex; align-items: center; gap: 6px; padding: 4px 12px 4px 4px; border-radius: 999px; font-size: 14px; color: var(--muted); background: #f1f4f8; }\n.steps-bar .num { wi",
+  "dth: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; background: #d5dbe2; color: var(--ink); }\n.steps-bar li.now { background: #ffe8a3; color: var(--ink);",
+  " font-weight: 700; }\n.steps-bar li.now .num { background: var(--accent); color: var(--accent-ink); }\n.steps-bar li.done { opacity: 0.7; }\n.steps-bar li.done .num { background: #1f9d55; color: #fff; }\n",
+  "\n.type-bar { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; align-items: center; padding: 4px 16px; min-height: 56px; }\n.type-bar .type { border: 2px solid var(--c); color: var(--c",
+  "); background: #fff; font-weight: 600; }\n.type-bar .type.on { background: var(--c); color: #fff; }\n.controls { display: flex; gap: 12px; justify-content: center; padding: 8px 16px 16px; }\n\n.result { d",
+  "isplay: grid; grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr); gap: 16px; padding: 16px; }\n.result .stage { padding: 0; align-items: flex-start; }\n.side { display: flex; flex-direction: colum",
+  "n; gap: 12px; }\n.summary { margin: 0; padding-left: 20px; line-height: 1.8; }\ntable.stats { border-collapse: collapse; width: 100%; background: #fff; font-size: 14px; }\ntable.stats th, table.stats td ",
+  "{ border: 1px solid var(--line); padding: 6px 8px; text-align: right; white-space: nowrap; }\ntable.stats th:first-child, table.stats td:first-child { text-align: left; }\ntable.stats tr.silent td { bac",
+  "kground: #fdecea; color: var(--alert); font-weight: 600; }\n.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-right: 4px; }\n\n.send-status { margi",
+  "n: 0; padding: 8px 12px; border-radius: 8px; font-weight: 600; }\n.send-status.pending { background: #fff7e0; color: #8a5a00; }\n.send-status.done { background: #e7f6ec; color: #1f7a3a; }\n.inbox { margi",
+  "n: 16px 16px 0; padding: 12px 16px; background: #fff; border: 1px solid var(--line); border-radius: 12px; display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }\n.drop { margin: 16px; padd",
+  "ing: 24px; border: 2px dashed var(--line); border-radius: 12px; text-align: center; background: #fff; }\n.drop.over { border-color: var(--accent); background: #eef3fa; }\n.drop input[type=\"file\"] { disp",
+  "lay: none; }\n.teacher { padding: 0 16px 16px; display: flex; flex-direction: column; gap: 16px; }\n.errors { background: #fdecea; border-radius: 8px; padding: 8px 16px; color: var(--danger); }\n.table-w",
+  "rap { overflow-x: auto; }\n.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }\nbutton.card { flex-direction: column; align-items: stretch; text-align: lef",
+  "t; padding: 8px; gap: 6px; }\nbutton.card .web { border: none; }\ndialog.detail { width: min(1100px, 95vw); max-height: 92vh; border: none; border-radius: 12px; padding: 16px; }\ndialog.detail .row { jus",
+  "tify-content: space-between; }\n\nbutton.guide-btn { border-color: var(--accent); color: var(--accent); font-weight: 600; white-space: nowrap; }\ndialog.guide { width: min(760px, 94vw); max-height: 92vh;",
+  " border: none; border-radius: 12px; padding: 20px 24px; color: var(--ink); }\ndialog.guide::backdrop { background: rgba(29, 39, 51, 0.45); }\n.guide-head { display: flex; justify-content: space-between;",
+  " align-items: center; gap: 12px; }\n.guide-head h3 { margin: 0; font-size: 20px; }\n.guide-steps { margin: 16px 0; padding: 0; list-style: none; counter-reset: step; display: flex; flex-direction: colum",
+  "n; gap: 10px; }\n.guide-steps li { counter-increment: step; display: flex; gap: 12px; align-items: flex-start; line-height: 1.6; }\n.guide-steps li::before {\n  content: counter(step); flex: none; width:",
+  " 28px; height: 28px; border-radius: 50%;\n  background: var(--accent); color: var(--accent-ink); font-weight: 700; display: grid; place-items: center;\n}\n.guide-figure { margin: 0 0 16px; }\n.guide-figur",
+  "e .web { max-width: 420px; margin: 0 auto; }\n.guide-figure figcaption { margin-top: 8px; font-size: 14px; color: var(--muted); line-height: 1.6; }\n.guide-tips { background: #f1f4f8; border-radius: 8px",
+  "; padding: 10px 16px; margin-bottom: 16px; }\n.guide-tips ul { margin: 6px 0 0; padding-left: 20px; line-height: 1.7; }\n.home .hint { margin-top: 16px; }\n\n@media (max-width: 900px) {\n  .result { grid-t",
+  "emplate-columns: 1fr; }\n}\n</style>\n</head>\n<body>\n<main id=\"app\"></main>\n<script>\nconst __m_dom = (() => {\nfunction h(tag, attrs = {}, ...children) {\n  const el = document.createElement(tag);\n  for (c",
+  "onst [k, v] of Object.entries(attrs)) {\n    if (v === null || v === undefined || v === false) continue;\n    if (k.startsWith('on')) el.addEventListener(k.slice(2).toLowerCase(), v);\n    else if (k ===",
+  " 'class') el.className = v;\n    else el.setAttribute(k, v === true ? '' : v);\n  }\n  for (const c of children.flat()) {\n    if (c === null || c === undefined || c === false) continue;\n    el.append(c i",
+  "nstanceof Node ? c : String(c));\n  }\n  return el;\n}\n\n// replaceChildren() は null を文字列 \"null\" として表示してしまうので、空の要素を除いてから渡す\nfunction setChildren(el, ...children) {\n  el.replaceChildren(...children.filter((",
+  "c) => c !== null && c !== undefined && c !== false));\n}\n\nreturn { h, setChildren };\n})();\n\nconst __m_model = (() => {\nconst APP_ID = 'spider-discussion';\nconst FORMAT_VERSION = 1;\n\nconst pad2 = (n) =>",
+  " String(n).padStart(2, '0');\n\nfunction formatSeconds(sec) {\n  const total = Math.round(sec);\n  return `${Math.floor(total / 60)}:${pad2(total % 60)}`;\n}\n\nfunction todayString(d = new Date()) {\n  retur",
+  "n `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;\n}\n\nconst MIN_MEMBERS = 2;\nconst MAX_MEMBERS = 12;\nconst MAX_TYPES = 8;\n\nconst DEFAULT_TYPES = [\n  { id: 't1', label: '質問', color:",
+  " '#2f6fdd' },\n  { id: 't2', label: '根拠', color: '#1f9d55' },\n  { id: 't3', label: '反論', color: '#d64545' },\n  { id: 't4', label: 'つなぐ', color: '#d98a00' },\n  { id: 't5', label: 'まとめ', color: '#8a4fd6'",
+  " },\n];\n\nconst round1 = (v) => Math.round(v * 10) / 10;\nconst round3 = (v) => Math.round(v * 1000) / 1000;\n\nfunction layoutPositions(layout, count) {\n  if (layout === 'circle') {\n    return Array.from(",
+  "{ length: count }, (_, i) => {\n      const a = -Math.PI / 2 + (2 * Math.PI * i) / count;\n      return { x: round3(0.5 + 0.36 * Math.cos(a)), y: round3(0.5 + 0.38 * Math.sin(a)) };\n    });\n  }\n  if (la",
+  "yout === 'rect') {\n    const top = Math.ceil(count / 2);\n    const row = (n, y) => Array.from({ length: n }, (_, i) => ({ x: round3(0.15 + (0.7 * (i + 0.5)) / n), y }));\n    return [...row(top, 0.2), ",
+  "...row(count - top, 0.8).reverse()];\n  }\n  const cols = Math.ceil(Math.sqrt(count));\n  const rows = Math.ceil(count / cols);\n  return Array.from({ length: count }, (_, i) => ({\n    x: round3(0.1 + (0.",
+  "8 * ((i % cols) + 0.5)) / cols),\n    y: round3(0.1 + (0.8 * (Math.floor(i / cols) + 0.5)) / rows),\n  }));\n}\n\nconst newId = () => globalThis.crypto?.randomUUID?.()\n  ?? `r${Date.now().toString(36)}${Ma",
+  "th.random().toString(36).slice(2, 12)}`;\n\n// 番号のない古い記録（自動収集の前に作ったもの）に番号を付ける\nfunction ensureId(s) {\n  if (!s.id) s.id = newId();\n  return s;\n}\n\nfunction createSession({ group, topic, date, layout, memb",
+  "ers, types }) {\n  return {\n    app: APP_ID,\n    version: FORMAT_VERSION,\n    id: newId(),\n    group,\n    topic,\n    date,\n    layout,\n    members: members.map((m) => ({ id: m.id, name: m.name, x: m.x,",
+  " y: m.y })),\n    types: types.map((t) => ({ id: t.id, label: t.label, color: t.color })),\n    turns: [],\n    startedAt: null,\n    totalSeconds: 0,\n    status: 'ready',\n    elapsedBefore: 0,\n    runnin",
+  "gSince: null,\n  };\n}\n\nfunction elapsed(s, now) {\n  const running = s.runningSince === null ? 0 : (now - s.runningSince) / 1000;\n  return round1(s.elapsedBefore + running);\n}\n\nconst lastTurn = (s) => s",
+  ".turns[s.turns.length - 1];\n\nfunction turnDuration(s, turn, now) {\n  return turn.duration ?? round1(elapsed(s, now) - turn.start);\n}\n\nfunction start(s, now) {\n  if (s.status !== 'ready') return s;\n  s",
+  ".status = 'running';\n  s.runningSince = now;\n  s.startedAt = new Date(now).toISOString();\n  return s;\n}\n\nfunction pause(s, now) {\n  if (s.status !== 'running') return s;\n  s.elapsedBefore = elapsed(s,",
+  " now);\n  s.runningSince = null;\n  s.status = 'paused';\n  return s;\n}\n\nfunction resume(s, now) {\n  if (s.status !== 'paused') return s;\n  s.runningSince = now;\n  s.status = 'running';\n  return s;\n}\n\nfu",
+  "nction addTurn(s, memberId, now) {\n  if (s.status !== 'running') return s;\n  const t = elapsed(s, now);\n  const last = lastTurn(s);\n  if (last) last.duration = round1(t - last.start);\n  s.turns.push({",
+  " member: memberId, start: t, duration: null, type: null });\n  return s;\n}\n\nfunction setTurnType(s, typeId) {\n  const last = lastTurn(s);\n  if (!last || (s.status !== 'running' && s.status !== 'paused'",
+  ")) return s;\n  last.type = last.type === typeId ? null : typeId;\n  return s;\n}\n\nfunction undo(s) {\n  if (s.status !== 'running' && s.status !== 'paused') return s;\n  s.turns.pop();\n  const last = last",
+  "Turn(s);\n  if (last) last.duration = null;\n  return s;\n}\n\nfunction end(s, now) {\n  if (s.status !== 'running' && s.status !== 'paused') return s;\n  s.elapsedBefore = elapsed(s, now);\n  s.runningSince ",
+  "= null;\n  s.totalSeconds = s.elapsedBefore;\n  const last = lastTurn(s);\n  if (last) last.duration = round1(s.totalSeconds - last.start);\n  s.status = 'ended';\n  return s;\n}\n\nfunction reopen(s) {\n  if ",
+  "(s.status !== 'ended') return s;\n  const last = lastTurn(s);\n  if (last) last.duration = null;\n  s.status = 'paused';\n  return s;\n}\n\nfunction edges(turns) {\n  const map = new Map();\n  for (let i = 1; ",
+  "i < turns.length; i++) {\n    const from = turns[i - 1].member;\n    const to = turns[i].member;\n    if (from === to) continue;\n    const [a, b] = from < to ? [from, to] : [to, from];\n    const key = `$",
+  "{a}|${b}`;\n    const e = map.get(key) || { a, b, count: 0 };\n    e.count++;\n    map.set(key, e);\n  }\n  return [...map.values()];\n}\n\nfunction lastEdge(turns) {\n  if (turns.length < 2) return null;\n  co",
+  "nst prev = turns[turns.length - 2];\n  const cur = turns[turns.length - 1];\n  if (prev.member === cur.member) return null;\n  return { from: prev.member, to: cur.member, type: cur.type };\n}\n\nfunction me",
+  "mberStats(s, now) {\n  return s.members.map((m) => {\n    const mine = s.turns.filter((t) => t.member === m.id);\n    const byType = {};\n    for (const t of mine) if (t.type) byType[t.type] = (byType[t.t",
+  "ype] || 0) + 1;\n    const seconds = round1(mine.reduce((sum, t) => sum + turnDuration(s, t, now), 0));\n    return { id: m.id, name: m.name, count: mine.length, seconds, byType };\n  });\n}\n\nfunction gro",
+  "upStats(s, now) {\n  const counts = memberStats(s, now).map((m) => m.count);\n  return {\n    totalTurns: s.turns.length,\n    totalSeconds: s.status === 'ended' ? s.totalSeconds : elapsed(s, now),\n    si",
+  "lentCount: counts.filter((c) => c === 0).length,\n    maxCount: Math.max(...counts),\n    minCount: Math.min(...counts),\n  };\n}\n\nfunction typeShares(s) {\n  const out = {};\n  for (const t of s.types) {\n ",
+  "   const n = s.turns.filter((x) => x.type === t.id).length;\n    out[t.label] = (out[t.label] || 0) + (s.turns.length ? round3(n / s.turns.length) : 0);\n  }\n  return out;\n}\n\nconst EXPORT_KEYS = ['app',",
+  " 'version', 'id', 'group', 'topic', 'date', 'layout', 'members', 'types', 'turns', 'startedAt', 'totalSeconds'];\nconst BROKEN = '記録ファイルの中身が壊れています';\n\nfunction toExport(s) {\n  const out = {};\n  for (con",
+  "st k of EXPORT_KEYS) out[k] = s[k];\n  return JSON.parse(JSON.stringify(out));\n}\n\nfunction parseExport(text) {\n  let d;\n  try {\n    d = JSON.parse(text);\n  } catch {\n    return { ok: false, error: 'JSO",
+  "Nとして読めません' };\n  }\n  if (!d || d.app !== APP_ID) return { ok: false, error: 'このアプリの記録ファイルではありません' };\n  if (d.version !== FORMAT_VERSION) return { ok: false, error: `対応していない形式です（version ${d.version}）` }",
+  ";\n  if (!Array.isArray(d.members) || !Array.isArray(d.types) || !Array.isArray(d.turns)) return { ok: false, error: BROKEN };\n  if (d.id !== undefined && typeof d.id !== 'string') return { ok: false, ",
+  "error: BROKEN };\n  const okMember = (m) => m && typeof m.id === 'string' && typeof m.name === 'string'\n    && Number.isFinite(m.x) && Number.isFinite(m.y);\n  if (!d.members.length || !d.members.every(",
+  "okMember)) return { ok: false, error: BROKEN };\n  const ids = new Set(d.members.map((m) => m.id));\n  const bad = d.turns.some((t) => !ids.has(t.member) || typeof t.start !== 'number' || typeof t.durat",
+  "ion !== 'number');\n  if (bad || typeof d.totalSeconds !== 'number') return { ok: false, error: BROKEN };\n  return { ok: true, session: { ...d, status: 'ended', elapsedBefore: d.totalSeconds, runningSi",
+  "nce: null } };\n}\n\nfunction fileBaseName(s) {\n  const group = (s.group || '班').replace(/[\\\\/:*?\"<>|\\s]+/g, '_');\n  return `${group}_${s.date}`;\n}\n\nfunction compareRows(sessions) {\n  const labels = [];\n",
+  "  for (const s of sessions) for (const t of s.types) if (!labels.includes(t.label)) labels.push(t.label);\n  const headers = ['班', 'テーマ', '人数', '発言の総数', '討論の時間（秒）', '発言0回の人数', ...labels.map((l) => `${l",
+  "}（%）`)];\n  const rows = sessions.map((s) => {\n    const g = groupStats(s, 0);\n    const shares = typeShares(s);\n    return [s.group, s.topic, s.members.length, g.totalTurns, Math.round(g.totalSeconds)",
+  ", g.silentCount,\n      ...labels.map((l) => Math.round((shares[l] || 0) * 100))];\n  });\n  return { headers, rows };\n}\n\nconst csvCell = (v) => {\n  // 表計算ソフトが = + - @ で始まる文字を数式として実行しないよう、先頭に ' を付ける\n  co",
+  "nst text = typeof v === 'string' && /^[=+\\-@]/.test(v) ? `'${v}` : String(v);\n  return /[\",\\r\\n]/.test(text) ? `\"${text.replace(/\"/g, '\"\"')}\"` : text;\n};\n\nfunction csvForGroups(sessions) {\n  const { h",
+  "eaders, rows } = compareRows(sessions);\n  return '﻿' + [headers, ...rows].map((r) => r.map(csvCell).join(',')).join('\\r\\n');\n}\n\nreturn { APP_ID, FORMAT_VERSION, formatSeconds, todayString, MIN_MEMBERS",
+  ", MAX_MEMBERS, MAX_TYPES, DEFAULT_TYPES, layoutPositions, ensureId, createSession, elapsed, turnDuration, start, pause, resume, addTurn, setTurnType, undo, end, reopen, edges, lastEdge, memberStats, g",
+  "roupStats, typeShares, toExport, parseExport, fileBaseName, compareRows, csvForGroups };\n})();\n\nconst __m_web = (() => {\nconst { edges, lastEdge } = __m_model;\n\nconst NS = 'http://www.w3.org/2000/svg'",
+  ";\nconst VIEW_W = 1000;\nconst VIEW_H = 625;\nconst SEAT_R = 44;\nconst MAX_DOTS = 20;\nconst FONT = 'system-ui, \"Noto Sans JP\", sans-serif';\n\nfunction el(tag, attrs = {}, text = null) {\n  const node = doc",
+  "ument.createElementNS(NS, tag);\n  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);\n  if (text !== null) node.textContent = text;\n  return node;\n}\n\nconst pos = (m) => ({ x: m.x * VI",
+  "EW_W, y: m.y * VIEW_H });\n\nfunction createSvg(...classes) {\n  const svg = document.createElementNS(NS, 'svg');\n  svg.classList.add(...classes);\n  return svg;\n}\n\nfunction renderWeb(svg, session, { onSe",
+  "atDown = null, highlightLast = false, markSilent = false, showCounts = true, caption = '' } = {}) {\n  svg.setAttribute('viewBox', `0 0 ${VIEW_W} ${VIEW_H}`);\n  svg.replaceChildren(el('rect', { x: 0, y",
+  ": 0, width: VIEW_W, height: VIEW_H, fill: '#ffffff' }));\n  if (caption) svg.append(el('text', { x: 16, y: 32, 'font-size': 22, fill: '#333333', 'font-family': FONT }, caption));\n\n  const byId = new Ma",
+  "p(session.members.map((m) => [m.id, m]));\n  const colorOf = new Map(session.types.map((t) => [t.id, t.color]));\n\n  for (const e of edges(session.turns)) {\n    const a = pos(byId.get(e.a));\n    const b",
+  " = pos(byId.get(e.b));\n    svg.append(el('line', {\n      x1: a.x, y1: a.y, x2: b.x, y2: b.y,\n      stroke: '#9aa3ad', 'stroke-width': Math.min(2 + e.count * 2, 16), 'stroke-linecap': 'round',\n    }));",
+  "\n  }\n\n  const last = highlightLast ? lastEdge(session.turns) : null;\n  if (last) {\n    const a = pos(byId.get(last.from));\n    const b = pos(byId.get(last.to));\n    svg.append(el('line', {\n      x1: a",
+  ".x, y1: a.y, x2: b.x, y2: b.y,\n      stroke: colorOf.get(last.type) ?? '#1d3557', 'stroke-width': 6, 'stroke-linecap': 'round',\n    }));\n  }\n\n  const current = highlightLast ? session.turns.at(-1)?.me",
+  "mber : null;\n  for (const m of session.members) {\n    const p = pos(m);\n    const mine = session.turns.filter((t) => t.member === m.id);\n    const silent = markSilent && mine.length === 0;\n    const g",
+  " = el('g', { class: 'seat', 'data-id': m.id });\n    g.append(el('circle', {\n      cx: p.x, cy: p.y, r: SEAT_R,\n      fill: m.id === current ? '#ffe8a3' : '#f1f4f8',\n      stroke: silent ? '#d64545' : ",
+  "'#1d3557',\n      'stroke-width': silent ? 4 : 2,\n      'stroke-dasharray': silent ? '8 6' : 'none',\n    }));\n    const name = m.name.length > 7 ? m.name.slice(0, 7) : m.name;\n    const size = name.len",
+  "gth <= 3 ? 22 : name.length <= 5 ? 17 : 14;\n    g.append(el('text', {\n      x: p.x, y: showCounts ? p.y + 2 : p.y + size / 3, 'text-anchor': 'middle',\n      'font-size': size, 'font-weight': 700, fill",
+  ": '#1d2733', 'font-family': FONT,\n    }, name));\n    if (showCounts) {\n      g.append(el('text', {\n        x: p.x, y: p.y + 24, 'text-anchor': 'middle', 'font-size': 14,\n        fill: silent ? '#d6454",
+  "5' : '#5b6673', 'font-family': FONT,\n      }, `${mine.length}回`));\n    }\n    mine.filter((t) => t.type && colorOf.has(t.type)).slice(0, MAX_DOTS).forEach((t, i) => {\n      const a = ((-90 + i * 18) * ",
+  "Math.PI) / 180;\n      g.append(el('circle', {\n        cx: p.x + (SEAT_R + 10) * Math.cos(a), cy: p.y + (SEAT_R + 10) * Math.sin(a), r: 5, fill: colorOf.get(t.type),\n      }));\n    });\n    if (onSeatDo",
+  "wn) g.addEventListener('pointerdown', (ev) => onSeatDown(m.id, ev));\n    svg.append(g);\n  }\n}\n\nfunction svgToPngBlob(svg, scale = 2) {\n  const copy = svg.cloneNode(true);\n  copy.setAttribute('xmlns', ",
+  "NS);\n  copy.setAttribute('width', VIEW_W);\n  copy.setAttribute('height', VIEW_H);\n  const xml = new XMLSerializer().serializeToString(copy);\n  const url = URL.createObjectURL(new Blob([xml], { type: '",
+  "image/svg+xml;charset=utf-8' }));\n  return new Promise((resolve, reject) => {\n    const img = new Image();\n    img.onload = () => {\n      const canvas = document.createElement('canvas');\n      canvas.",
+  "width = VIEW_W * scale;\n      canvas.height = VIEW_H * scale;\n      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);\n      URL.revokeObjectURL(url);\n      canvas.toBlob((b) =",
+  "> (b ? resolve(b) : reject(new Error('画像を作れませんでした'))), 'image/png');\n    };\n    img.onerror = () => {\n      URL.revokeObjectURL(url);\n      reject(new Error('画像を作れませんでした'));\n    };\n    img.src = url;\n",
+  "  });\n}\n\nreturn { VIEW_W, VIEW_H, createSvg, renderWeb, svgToPngBlob };\n})();\n\nconst __m_storage = (() => {\nconst CURRENT = 'spider.current';\nconst SETUPS = 'spider.setups';\nconst OUTBOX = 'spider.out",
+  "box';\nconst GUIDES = 'spider.guidesSeen';\nconst MAX_SETUPS = 10;\n\nfunction defaultBackend() {\n  try {\n    return globalThis.localStorage ?? null;\n  } catch {\n    return null;\n  }\n}\n\nfunction createSto",
+  "re(backend = defaultBackend()) {\n  const read = (key, fallback) => {\n    try {\n      const v = backend.getItem(key);\n      return v === null ? fallback : JSON.parse(v);\n    } catch {\n      return fall",
+  "back;\n    }\n  };\n  const write = (key, value) => {\n    try {\n      backend.setItem(key, JSON.stringify(value));\n      return true;\n    } catch {\n      return false;\n    }\n  };\n  return {\n    saveCurre",
+  "nt: (session) => write(CURRENT, session),\n    loadCurrent: () => read(CURRENT, null),\n    clearCurrent() {\n      try {\n        backend.removeItem(CURRENT);\n      } catch {\n        // 保存が使えない端末では消すものもな",
+  "い\n      }\n    },\n    listSetups: () => read(SETUPS, []),\n    saveSetup(setup) {\n      const others = read(SETUPS, []).filter((x) => x.group !== setup.group);\n      return write(SETUPS, [setup, ...othe",
+  "rs].slice(0, MAX_SETUPS));\n    },\n    listOutbox: () => read(OUTBOX, []),\n    addOutbox(record) {\n      const others = read(OUTBOX, []).filter((r) => r.id !== record.id);\n      return write(OUTBOX, [.",
+  "..others, record]);\n    },\n    removeOutbox: (id) => write(OUTBOX, read(OUTBOX, []).filter((r) => r.id !== id)),\n    hasSeenGuide: (name) => read(GUIDES, []).includes(name),\n    markGuideSeen(name) {\n",
+  "      const seen = read(GUIDES, []);\n      return seen.includes(name) || write(GUIDES, [...seen, name]);\n    },\n  };\n}\n\nfunction downloadBlob(filename, blob) {\n  const url = URL.createObjectURL(blob);",
+  "\n  const a = Object.assign(document.createElement('a'), { href: url, download: filename });\n  document.body.append(a);\n  a.click();\n  a.remove();\n  setTimeout(() => URL.revokeObjectURL(url), 1000);\n}\n",
+  "\nfunction downloadText(filename, text, mime) {\n  downloadBlob(filename, new Blob([text], { type: `${mime};charset=utf-8` }));\n}\n\nfunction readFileTexts(files) {\n  return Promise.all([...files].map((f)",
+  " => f.text().then(\n    (text) => ({ name: f.name, text }),\n    () => ({ name: f.name, text: '' }),\n  )));\n}\n\nreturn { MAX_SETUPS, createStore, downloadBlob, downloadText, readFileTexts };\n})();\n\nconst",
+  " __m_remote = (() => {\n// Apps Script 版で、先生のスプレッドシートとやりとりする（google.script.run）。\n// GitHub 版など google.script.run がない場所では createRemote() が null を返し、送信機能なしで動く。\n\nfunction createRemote(runner = globalThis.",
+  "google?.script?.run) {\n  if (!runner) return null;\n  const call = (name, ...args) => new Promise((resolve, reject) => {\n    runner.withSuccessHandler(resolve).withFailureHandler(reject)[name](...args)",
+  ";\n  });\n  return {\n    submit: (record) => call('submitRecord', JSON.stringify(record)),\n    isTeacher: () => call('isTeacher'),\n    listDates: () => call('listDates'),\n    getRecords: (date) => call(",
+  "'getRecords', date),\n  };\n}\n\nlet flushing = null;\n\n// 送信待ちを順に送り、Google 側が ok を返したものだけ送信待ちから消す\nfunction flushOutbox(store, remote) {\n  if (!remote) return Promise.resolve({ sent: 0, left: store.listOut",
+  "box().length, error: null });\n  if (flushing) return flushing;\n  flushing = (async () => {\n    let sent = 0;\n    let error = null;\n    for (const record of store.listOutbox()) {\n      try {\n        co",
+  "nst r = await remote.submit(record);\n        if (r && r.ok) {\n          store.removeOutbox(record.id);\n          sent++;\n        } else {\n          error = r?.error ?? '送信できませんでした';\n        }\n      } ",
+  "catch {\n        error = '通信できませんでした';\n      }\n    }\n    return { sent, left: store.listOutbox().length, error };\n  })().finally(() => {\n    flushing = null;\n  });\n  return flushing;\n}\n\nreturn { create",
+  "Remote, flushOutbox };\n})();\n\nconst __m_guide = (() => {\n// 記録係向けの使い方ガイド。各画面の「？ 使い方」ボタンと、はじめて開いたときの自動表示に使う。\nconst { h } = __m_dom;\nconst { createSession, DEFAULT_TYPES, layoutPositions, start, addTurn",
+  ", setTurnType } = __m_model;\nconst { createSvg, renderWeb } = __m_web;\n\n// ガイドの図に使う見本の記録（4人、1人は発言なし）\nfunction sampleSession() {\n  const names = ['12', '5', 'たなか', '23'];\n  const members = layoutPositi",
+  "ons('circle', 4).map((p, i) => ({ id: `m${i + 1}`, name: names[i], ...p }));\n  const s = start(createSession({ group: '見本', topic: '', date: '', layout: 'circle', members, types: DEFAULT_TYPES }), 0);",
+  "\n  [['m1', 't1'], ['m2', 't2'], ['m1', null], ['m2', 't3'], ['m3', 't4']].forEach(([m, t], i) => {\n    addTurn(s, m, i * 10000);\n    if (t) setTurnType(s, t);\n  });\n  return s;\n}\n\nfunction sampleWeb(o",
+  "ptions) {\n  const svg = createSvg('web', 'guide-web');\n  renderWeb(svg, sampleSession(), options);\n  return svg;\n}\n\nfunction guides({ remote }) {\n  return {\n    setup: {\n      title: '準備のしかた',\n      s",
+  "teps: [\n        '「班の名前」と「討論のテーマ」を入れます。',\n        '「人数」と「座席の並び」を選びます。実際に座っている形に合わせて、図の席を指でドラッグして動かせます。',\n        '「メンバー」の欄に、席ごとの名前か出席番号を入れます。図の席と同じ順番です。',\n        '「発言の種類」は、先生から指示がなければそのままで大丈夫です。',\n   ",
+  "     '最後に「記録をはじめる」を押します。',\n      ],\n      tips: ['前に使った設定は、いちばん上の「前回の設定を使う」から呼び出せます。'],\n    },\n    record: {\n      title: '記録のしかた',\n      steps: [\n        '討論が始まったら「開始」を押します。',\n        '話し始めた人の席をタップしま",
+  "す。前に話した人から線がのびます。',\n        '余裕があれば、下に出るボタンで発言の種類（質問・根拠など）を選びます。押さなくてもかまいません。もう一度押すと外れます。',\n        '押しまちがえたら「取り消し」。休けいのときは「一時停止」、続けるときは「再開」。',\n        '討論が終わったら「終了」を押します。',\n      ],\n      figure: () ",
+  "=> sampleWeb({ highlightLast: true }),\n      caption: 'いま話している人の席は黄色、最後にのびた線は発言の種類の色になります。やりとりが多い2人ほど線が太くなります。',\n      tips: [\n        '同じ人が続けて話したときは、少し間をあけてもう一度タップします（すばやい2回押しは1回と数えます）。',\n        '記録",
+  "は自動で保存されます。ページを閉じても、ホームの「続きから記録する」で戻れます。',\n        'Chromebook のふたを閉じると自動で一時停止します。開いたら「再開」を押します。',\n      ],\n    },\n    result: {\n      title: '結果の見かたと提出',\n      steps: remote\n        ? [\n          '「✓",
+  " 先生に送りました」と出ていれば、提出は完了です。',\n          '「送信待ち」のときは、通信がつながると自動で送られます。心配なときは「もう一度送る」を押します。',\n          'まだ討論が続く場合は「記録に戻る」で続きを記録できます。',\n        ]\n        : [\n          '「提出用に保存」を押すと、記録ファイル（.json）と図（.png）が",
+  "ダウンロードフォルダに保存されます。「複数のファイルのダウンロード」の確認が出たら「許可」を押します。',\n          '保存した2つのファイルを、Classroom の課題に添付して提出します。',\n          'まだ討論が続く場合は「記録に戻る」で続きを記録できます。',\n        ],\n      figure: () => sampleWeb({ markSilent",
+  ": true }),\n      caption: '線が太いほど、その2人のやりとりが多かったことを表します。赤い点線の席は、一度も発言しなかった人です。席のまわりの色の点は発言の種類で、色は表の見出しと同じです。',\n      tips: [],\n    },\n  };\n}\n\nfunction openGuide(name, { remote = false } = {}) {\n  cons",
+  "t g = guides({ remote })[name];\n  // close イベントは遅れて届くことがあるので、ボタンで閉じたときはその場で取り除く\n  const close = () => {\n    dlg.close();\n    dlg.remove();\n  };\n  const dlg = h('dialog', { class: 'guide' },\n    h('div",
+  "', { class: 'guide-head' },\n      h('h3', {}, `使い方：${g.title}`),\n      h('button', { onClick: close }, '閉じる')),\n    h('ol', { class: 'guide-steps' }, ...g.steps.map((s) => h('li', {}, s))),\n    g.figu",
+  "re ? h('figure', { class: 'guide-figure' }, g.figure(), h('figcaption', {}, g.caption)) : null,\n    g.tips.length ? h('div', { class: 'guide-tips' }, h('strong', {}, 'こんなときは'), h('ul', {}, ...g.tips.m",
+  "ap((t) => h('li', {}, t)))) : null,\n    h('div', { class: 'row end' }, h('button', { class: 'big primary', onClick: close }, 'わかった')));\n  dlg.addEventListener('close', () => dlg.remove());\n  document.",
+  "body.append(dlg);\n  dlg.showModal();\n  return dlg;\n}\n\n// 記録画面に常に出す手順バーの中身。state は done（済み）／now（今の手順）／next（これから）\nfunction recordSteps(s) {\n  const last = s.turns[s.turns.length - 1];\n  const started = ",
+  "s.status !== 'ready';\n  return [\n    s.status === 'paused'\n      ? { text: '「再開」を押す', state: 'now' }\n      : { text: '「開始」を押す', state: started ? 'done' : 'now' },\n    { text: '話した人の席をタップ', state: s.st",
+  "atus === 'running' ? 'now' : 'next' },\n    { text: '発言の種類を選ぶ（なくてもよい）', state: !last || s.status === 'ready' ? 'next' : last.type ? 'done' : 'now' },\n    { text: '終わったら「終了」', state: 'next' },\n  ];\n}\n\nf",
+  "unction guideButton(name, options) {\n  return h('button', { class: 'guide-btn', onClick: () => openGuide(name, options) }, '？ 使い方');\n}\n\n// その端末ではじめてその画面を開いたときだけ、ガイドを自動で開く\nfunction showGuideOnce(name, ",
+  "store, options) {\n  if (store.hasSeenGuide(name)) return;\n  store.markGuideSeen(name);\n  openGuide(name, options);\n}\n\nreturn { openGuide, recordSteps, guideButton, showGuideOnce };\n})();\n\nconst __m_se",
+  "tup = (() => {\nconst { h, setChildren } = __m_dom;\nconst { DEFAULT_TYPES, MIN_MEMBERS, MAX_MEMBERS, MAX_TYPES, layoutPositions, createSession, todayString } = __m_model;\nconst { createSvg, renderWeb }",
+  " = __m_web;\nconst { guideButton, showGuideOnce } = __m_guide;\n\nconst LAYOUTS = [['circle', '円形'], ['rect', '長方形'], ['free', '自由配置']];\nconst range = (a, b) => Array.from({ length: b - a + 1 }, (_, i) =",
+  "> a + i);\nconst clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));\nconst round3 = (v) => Math.round(v * 1000) / 1000;\n\nfunction makeMembers(layout, count, old) {\n  return layoutPositions(layout, co",
+  "unt).map((p, i) => ({ id: `m${i + 1}`, name: old[i]?.name ?? String(i + 1), ...p }));\n}\n\nfunction blankSetup() {\n  return { group: '', topic: '', layout: 'circle', members: makeMembers('circle', 6, []",
+  "), types: DEFAULT_TYPES.map((t) => ({ ...t })) };\n}\n\nfunction renderSetup(root, { store, onStart, onCancel }) {\n  let setup = blankSetup();\n  const saved = store.listSetups();\n  const form = h('div', ",
+  "{ class: 'setup' });\n  const preview = createSvg('web', 'preview');\n  const error = h('p', { class: 'error' });\n  preview.addEventListener('contextmenu', (e) => e.preventDefault());\n\n  root.append(h('",
+  "header', { class: 'bar' }, h('button', { onClick: onCancel }, '← もどる'), h('h2', {}, '準備'), guideButton('setup')), form);\n\n  function redrawPreview() {\n    renderWeb(preview, { members: setup.members, ",
+  "types: setup.types, turns: [] }, { onSeatDown: startDrag, showCounts: false });\n  }\n\n  function startDrag(id, ev) {\n    if (ev.button !== 0) return;\n    ev.preventDefault();\n    const m = setup.member",
+  "s.find((x) => x.id === id);\n    const move = (e) => {\n      const r = preview.getBoundingClientRect();\n      m.x = round3(clamp((e.clientX - r.left) / r.width, 0.06, 0.94));\n      m.y = round3(clamp((",
+  "e.clientY - r.top) / r.height, 0.08, 0.92));\n      redrawPreview();\n    };\n    const up = () => {\n      window.removeEventListener('pointermove', move);\n      window.removeEventListener('pointerup', u",
+  "p);\n      window.removeEventListener('pointercancel', up);\n    };\n    window.addEventListener('pointermove', move);\n    window.addEventListener('pointerup', up);\n    window.addEventListener('pointerca",
+  "ncel', up);\n  }\n\n  function field(label, key, placeholder) {\n    return h('label', {}, label, h('input', { value: setup[key], placeholder, maxlength: 40, onInput: (e) => { setup[key] = e.target.value;",
+  " } }));\n  }\n\n  const nextTypeId = () => {\n    let n = 1;\n    while (setup.types.some((t) => t.id === `t${n}`)) n++;\n    return `t${n}`;\n  };\n\n  function typesEditor() {\n    return h('div', { class: 't",
+  "ypes' },\n      ...setup.types.map((t, i) => h('div', { class: 'row type-row' },\n        h('input', { type: 'color', value: t.color, onInput: (e) => { t.color = e.target.value; redrawPreview(); } }),\n ",
+  "       h('input', { value: t.label, maxlength: 8, onInput: (e) => { t.label = e.target.value; } }),\n        h('button', { onClick: () => { setup.types.splice(i, 1); draw(); } }, '削除'))),\n      setup.t",
+  "ypes.length < MAX_TYPES\n        ? h('button', { onClick: () => { setup.types.push({ id: nextTypeId(), label: '新しい種類', color: '#555555' }); draw(); } }, '＋ 種類を追加')\n        : null);\n  }\n\n  function draw",
+  "() {\n    redrawPreview();\n    setChildren(form,\n      saved.length\n        ? h('label', {}, '前回の設定を使う', h('select', {\n          onChange: (e) => {\n            const s = saved[e.target.value];\n        ",
+  "    if (!s) return;\n            setup = structuredClone(s);\n            draw();\n          },\n        }, h('option', { value: '' }, '選んでください'), ...saved.map((s, i) => h('option', { value: i }, `${s.gro",
+  "up}（${s.topic || 'テーマなし'}）`))))\n        : null,\n      field('班の名前', 'group', '例：3班'),\n      field('討論のテーマ', 'topic', ''),\n      h('div', { class: 'row' },\n        h('label', {}, '人数', h('select', {\n  ",
+  "        onChange: (e) => { setup.members = makeMembers(setup.layout, Number(e.target.value), setup.members); draw(); },\n        }, ...range(MIN_MEMBERS, MAX_MEMBERS).map((n) => h('option', { value: n,",
+  " selected: n === setup.members.length }, `${n}人`)))),\n        h('label', {}, '座席の並び', h('select', {\n          onChange: (e) => { setup.layout = e.target.value; setup.members = makeMembers(setup.layout",
+  ", setup.members.length, setup.members); draw(); },\n        }, ...LAYOUTS.map(([v, label]) => h('option', { value: v, selected: v === setup.layout }, label))))),\n      h('p', { class: 'hint' }, '席をドラッグ",
+  "すると位置を動かせます。名前は出席番号でもかまいません（提出するファイルに名前を入れたくないときは出席番号にしてください）。'),\n      preview,\n      h('h3', {}, 'メンバー'),\n      h('div', { class: 'names' }, ...setup.members.map((m, i) => h('label', {}, `席${i + 1}`",
+  ",\n        h('input', { value: m.name, maxlength: 12, onInput: (e) => { m.name = e.target.value; redrawPreview(); } })))),\n      h('h3', {}, '発言の種類'),\n      typesEditor(),\n      error,\n      h('div', {",
+  " class: 'row end' }, h('button', { class: 'big primary', onClick: submit }, '記録をはじめる')));\n  }\n\n  function submit() {\n    setup.group = setup.group.trim();\n    setup.topic = setup.topic.trim();\n    for",
+  " (const m of setup.members) m.name = m.name.trim();\n    if (!setup.group) {\n      error.textContent = '班の名前を入れてください。';\n      return;\n    }\n    if (setup.members.some((m) => !m.name)) {\n      error.tex",
+  "tContent = '名前が空の席があります。';\n      return;\n    }\n    setup.types = setup.types.map((t) => ({ ...t, label: t.label.trim() })).filter((t) => t.label);\n    store.saveSetup({ ...structuredClone(setup), save",
+  "dAt: new Date().toISOString() });\n    onStart(createSession({ ...setup, date: todayString() }));\n  }\n\n  draw();\n  showGuideOnce('setup', store);\n}\n\nreturn { renderSetup };\n})();\n\nconst __m_record = ((",
+  ") => {\nconst { h, setChildren } = __m_dom;\nconst { start, pause, resume, addTurn, setTurnType, undo, end, elapsed, formatSeconds } = __m_model;\nconst { createSvg, renderWeb } = __m_web;\nconst { guideB",
+  "utton, showGuideOnce, recordSteps } = __m_guide;\n\nconst DOUBLE_TAP_MS = 600; // 同じ席をこれより短い間隔で続けて押したときは押し間違いとみなす\nconst SLEEP_GAP_MS = 90000; // タイマーがこれ以上止まっていたら、ふたを閉じるなどで端末が休止していたとみなす\n\nfunction renderR",
+  "ecord(root, session, { store, onEnd, onHome }) {\n  const svg = createSvg('web', 'live');\n  const timer = h('span', { class: 'timer' });\n  const typeBar = h('div', { class: 'type-bar' });\n  const contr",
+  "ols = h('div', { class: 'controls' });\n  const stepsBar = h('ol', { class: 'steps-bar', 'aria-label': '入力のしかた' });\n  const warn = h('p', { class: 'warn', hidden: true }, 'この端末に保存できませんでした。終了後、すぐに「提出用に保",
+  "存」をしてください。');\n  const sleepNote = h('p', { class: 'warn', hidden: true }, '画面がしばらく止まっていたので、その間の時間は数えずに一時停止しました。討論が続いていれば「再開」を押してください。');\n  const nameOf = (id) => session.members.find((m) => m.id === i",
+  "d)?.name ?? '';\n  let lastTap = { id: null, at: 0 };\n  let lastTick = Date.now();\n\n  svg.addEventListener('contextmenu', (e) => e.preventDefault());\n\n  root.append(\n    h('header', { class: 'bar' },\n ",
+  "     h('button', { onClick: () => { act(() => pause(session, Date.now())); onHome(); } }, '← ホーム'),\n      h('h2', {}, `${session.group}　${session.topic}`),\n      timer,\n      guideButton('record')),\n ",
+  "   stepsBar,\n    warn,\n    sleepNote,\n    h('div', { class: 'stage' }, svg),\n    typeBar,\n    controls);\n\n  function save() {\n    session.savedAt = Date.now();\n    warn.hidden = store.saveCurrent(sess",
+  "ion);\n  }\n\n  function act(fn) {\n    lastTick = Date.now(); // 操作があった時点では端末は動いている。休止の判定をここから数え直す\n    fn();\n    save();\n    draw();\n  }\n\n  function tapSeat(id, ev) {\n    if (ev.button !== 0) return;\n   ",
+  " const now = Date.now();\n    const repeated = id === lastTap.id && now - lastTap.at < DOUBLE_TAP_MS;\n    lastTap = { id, at: now };\n    if (!repeated) act(() => addTurn(session, id, now));\n  }\n\n  func",
+  "tion checkSleep() {\n    const now = Date.now();\n    const gap = now - lastTick;\n    lastTick = now;\n    if (session.status !== 'running' || gap < SLEEP_GAP_MS) return;\n    act(() => pause(session, now",
+  " - gap));\n    sleepNote.hidden = false;\n  }\n\n  function tick() {\n    timer.textContent = (session.status === 'paused' ? '一時停止中 ' : '') + formatSeconds(elapsed(session, Date.now()));\n  }\n\n  function dr",
+  "awTypeBar() {\n    const last = session.turns[session.turns.length - 1];\n    if (!last) {\n      typeBar.replaceChildren(h('span', { class: 'hint' },\n        session.status === 'ready' ? '「開始」を押してから、話した",
+  "人の席をタップします。' : '話した人の席をタップします。'));\n      return;\n    }\n    typeBar.replaceChildren(\n      h('span', { class: 'hint' }, `${nameOf(last.member)} の発言：`),\n      ...session.types.map((t) => h('button', {\n ",
+  "       class: last.type === t.id ? 'type on' : 'type',\n        style: `--c:${t.color}`,\n        onClick: () => act(() => setTurnType(session, t.id)),\n      }, t.label)));\n  }\n\n  function draw() {\n    ",
+  "renderWeb(svg, session, { highlightLast: true, onSeatDown: tapSeat });\n    svg.classList.toggle('disabled', session.status !== 'running');\n    if (session.status === 'running') sleepNote.hidden = true",
+  ";\n    drawTypeBar();\n    stepsBar.replaceChildren(...recordSteps(session).map((st, i) => h('li', { class: st.state },\n      h('span', { class: 'num' }, st.state === 'done' ? '✓' : String(i + 1)), st.t",
+  "ext)));\n    const { status } = session;\n    setChildren(controls,\n      status === 'ready' ? h('button', { class: 'big primary', onClick: () => act(() => start(session, Date.now())) }, '開始') : null,\n ",
+  "     status === 'running' ? h('button', { class: 'big', onClick: () => act(() => pause(session, Date.now())) }, '一時停止') : null,\n      status === 'paused' ? h('button', { class: 'big primary', onClick:",
+  " () => act(() => resume(session, Date.now())) }, '再開') : null,\n      h('button', { class: 'big', disabled: status === 'ready' || !session.turns.length, onClick: () => act(() => undo(session)) }, '取り消し",
+  "'),\n      h('button', {\n        class: 'big danger',\n        disabled: status === 'ready',\n        onClick: () => {\n          if (!confirm('討論の記録を終了しますか？')) return;\n          act(() => end(session, Da",
+  "te.now()));\n          onEnd();\n        },\n      }, '終了'));\n    tick();\n  }\n\n  const timerId = setInterval(() => {\n    checkSleep();\n    tick();\n  }, 500);\n  const saveId = setInterval(save, 5000);\n  w",
+  "indow.addEventListener('pagehide', save);\n  draw();\n  if (session.status === 'ready') showGuideOnce('record', store);\n\n  return () => {\n    clearInterval(timerId);\n    clearInterval(saveId);\n    windo",
+  "w.removeEventListener('pagehide', save);\n  };\n}\n\nreturn { renderRecord };\n})();\n\nconst __m_result = (() => {\nconst { h } = __m_dom;\nconst { reopen, memberStats, groupStats, toExport, fileBaseName, for",
+  "matSeconds, ensureId } = __m_model;\nconst { createSvg, renderWeb, svgToPngBlob } = __m_web;\nconst { downloadText, downloadBlob } = __m_storage;\nconst { flushOutbox } = __m_remote;\nconst { guideButton,",
+  " showGuideOnce } = __m_guide;\n\nconst STATUS_CHECK_MS = 5000;\n\nfunction memberTable(session, stats) {\n  return h('table', { class: 'stats' },\n    h('thead', {}, h('tr', {},\n      h('th', {}, '名前'), h('",
+  "th', {}, '回数'), h('th', {}, '時間'),\n      ...session.types.map((t) => h('th', {}, h('span', { class: 'dot', style: `--c:${t.color}` }), t.label)))),\n    h('tbody', {}, ...stats.map((m) => h('tr', { cla",
+  "ss: m.count === 0 ? 'silent' : null },\n      h('td', {}, m.name), h('td', {}, m.count), h('td', {}, formatSeconds(m.seconds)),\n      ...session.types.map((t) => h('td', {}, m.byType[t.id] || 0))))));\n",
+  "}\n\nfunction renderResult(root, session, { store, remote = null, onBack, onHome }) {\n  const svg = createSvg('web');\n  renderWeb(svg, session, { markSilent: true, caption: `${session.group}　${session.t",
+  "opic}　${session.date}` });\n  const g = groupStats(session, 0);\n  const status = h('p', { class: 'hint' });\n  const sendStatus = h('p', { class: 'send-status' });\n  const resendButton = h('button', { h",
+  "idden: true, onClick: () => send() }, 'もう一度送る');\n\n  async function saveFiles() {\n    const base = fileBaseName(session);\n    downloadText(`${base}.json`, JSON.stringify(toExport(session), null, 2), 'a",
+  "pplication/json');\n    try {\n      downloadBlob(`${base}.png`, await svgToPngBlob(svg));\n      status.textContent = remote\n        ? `「${base}.json」と「${base}.png」を保存しました（予備の控えです）。`\n        : `「${base}",
+  ".json」と「${base}.png」を保存しました。ダウンロードフォルダから Classroom に添付して提出してください。`;\n    } catch (err) {\n      status.textContent = `記録ファイルは保存しましたが、画像を作れませんでした（${err.message}）。`;\n    }\n  }\n\n  const isUnsent = () => st",
+  "ore.listOutbox().some((r) => r.id === session.id);\n\n  function showSendStatus(error = null) {\n    const unsent = isUnsent();\n    sendStatus.className = unsent ? 'send-status pending' : 'send-status do",
+  "ne';\n    sendStatus.textContent = unsent\n      ? `送信待ち：通信がつながると自動で先生に送ります。${error ? `（${error}）` : ''}`\n      : '✓ 先生に送りました';\n    resendButton.hidden = !unsent;\n  }\n\n  async function send() {\n    send",
+  "Status.className = 'send-status pending';\n    sendStatus.textContent = '先生に送っています…';\n    const r = await flushOutbox(store, remote);\n    showSendStatus(r.error);\n  }\n\n  let checkId = null;\n  if (remot",
+  "e) {\n    // 番号のない古い記録にも番号を付けてから送信待ちに入れる。同じ番号なら Google 側で上書きされる\n    ensureId(session);\n    store.saveCurrent(session);\n    store.addOutbox(toExport(session));\n    send();\n    checkId = setInterval(() =",
+  "> showSendStatus(), STATUS_CHECK_MS);\n  }\n\n  root.append(\n    h('header', { class: 'bar' }, h('button', { onClick: onHome }, '← ホーム'), h('h2', {}, `結果：${session.group}`),\n      guideButton('result', {",
+  " remote: !!remote })),\n    h('div', { class: 'result' },\n      h('div', { class: 'stage' }, svg),\n      h('div', { class: 'side' },\n        h('ul', { class: 'summary' },\n          h('li', {}, `発言の総数：$",
+  "{g.totalTurns}回`),\n          h('li', {}, `討論の時間：${formatSeconds(g.totalSeconds)}`),\n          h('li', {}, `いちばん多い人：${g.maxCount}回／いちばん少ない人：${g.minCount}回`),\n          h('li', { class: g.silentCount ? ",
+  "'alert' : null }, `発言0回の人：${g.silentCount}人`)),\n        memberTable(session, memberStats(session, 0)),\n        remote ? h('div', { class: 'row' }, sendStatus, resendButton) : null,\n        h('div', { ",
+  "class: 'row' },\n          h('button', { class: remote ? 'big' : 'big primary', onClick: saveFiles }, remote ? 'ファイルにも保存' : '提出用に保存'),\n          h('button', {\n            onClick: () => {\n             ",
+  " reopen(session);\n              store.saveCurrent(session);\n              onBack();\n            },\n          }, '記録に戻る')),\n        status)));\n\n  showGuideOnce('result', store, { remote: !!remote });\n ",
+  " return () => clearInterval(checkId);\n}\n\nreturn { memberTable, renderResult };\n})();\n\nconst __m_teacher = (() => {\nconst { h, setChildren } = __m_dom;\nconst { parseExport, groupStats, memberStats, com",
+  "pareRows, csvForGroups, formatSeconds, todayString } = __m_model;\nconst { createSvg, renderWeb } = __m_web;\nconst { readFileTexts, downloadText } = __m_storage;\nconst { memberTable } = __m_result;\n\nco",
+  "nst keyOf = (s) => s.id || `${s.group}|${s.startedAt}`;\n\nfunction renderTeacher(root, { remote = null, onHome }) {\n  let received = []; // 先生のスプレッドシートに届いた記録（Apps Script 版のみ）\n  let loaded = []; // ファイル",
+  "から読み込んだ記録\n  let errors = [];\n  const all = () => [...received, ...loaded];\n  const body = h('div', { class: 'teacher' });\n  const input = h('input', { type: 'file', accept: '.json,application/json', m",
+  "ultiple: true, onChange: (e) => load(e.target.files) });\n  const drop = h('div', { class: 'drop' },\n    h('p', {}, remote\n      ? 'ファイルで提出された記録（.json）も、ここにドラッグするか、ボタンで選んで読み込めます。'\n      : '提出された記録ファイル（",
+  ".json）を、ここにドラッグするか、ボタンで選んでください。'),\n    h('label', { class: 'button' }, 'ファイルを選ぶ', input),\n    remote ? null : h('p', { class: 'hint' }, '記録を自動で集めたいときは、', h('a', { href: 'setup.html' }, '設置のしかた'), 'を見て",
+  "ください。'));\n\n  drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });\n  drop.addEventListener('dragleave', () => drop.classList.remove('over'));\n  drop.addEventLi",
+  "stener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); load(e.dataTransfer.files); });\n\n  const inbox = remote ? receivedPanel() : null;\n  root.append(h('header', { class: 'bar' },",
+  " h('button', { onClick: onHome }, '← ホーム'), h('h2', {}, '教師：班の比較')),\n    ...[inbox?.el, drop, body].filter(Boolean));\n\n  function receivedPanel() {\n    const select = h('select', { onChange: () => fet",
+  "chDay(select.value) });\n    const status = h('span', { class: 'hint' });\n    const el = h('div', { class: 'inbox' },\n      h('label', {}, '届いた記録の日付', select),\n      h('button', { class: 'primary', onC",
+  "lick: () => refresh() }, '更新'),\n      status);\n\n    async function fetchDay(date) {\n      if (!date) return;\n      status.textContent = '読み込んでいます…';\n      try {\n        const rows = await remote.getRe",
+  "cords(date);\n        const bad = [];\n        received = [];\n        for (const row of rows) {\n          const r = parseExport(row.json);\n          if (r.ok) received.push(r.session);\n          else ba",
+  "d.push(`${row.submitter}：${r.error}`);\n        }\n        loaded = loaded.filter((s) => !received.some((x) => keyOf(x) === keyOf(s)));\n        status.textContent = `${date} に届いた記録：${received.length}件${",
+  "bad.length ? `（読めないもの ${bad.length}件：${bad.join('、')}）` : ''}`;\n      } catch (err) {\n        status.textContent = `読み込めませんでした（${err?.message ?? '通信できません'}）`;\n      }\n      draw();\n    }\n\n    async fu",
+  "nction refresh() {\n      status.textContent = '読み込んでいます…';\n      let dates;\n      try {\n        dates = await remote.listDates();\n      } catch (err) {\n        status.textContent = `読み込めませんでした（${err?.",
+  "message ?? '通信できません'}）`;\n        return;\n      }\n      if (!dates.length) {\n        select.replaceChildren(h('option', { value: '' }, 'まだ届いていません'));\n        status.textContent = '';\n        return;\n  ",
+  "    }\n      const keep = select.value || (dates.some((d) => d.date === todayString()) ? todayString() : dates[0].date);\n      select.replaceChildren(...dates.map((d) => h('option', { value: d.date, se",
+  "lected: d.date === keep }, `${d.date}（${d.count}件）`)));\n      select.value = dates.some((d) => d.date === keep) ? keep : dates[0].date;\n      await fetchDay(select.value);\n    }\n\n    refresh();\n    re",
+  "turn { el };\n  }\n\n  async function load(files) {\n    for (const { name, text } of await readFileTexts(files)) {\n      if (!name.toLowerCase().endsWith('.json')) {\n        errors.push({ fileName: name,",
+  " error: '記録ファイル（.json）ではないので読み飛ばしました' });\n        continue;\n      }\n      const r = parseExport(text);\n      if (!r.ok) {\n        errors.push({ fileName: name, error: r.error });\n        continue;\n   ",
+  "   }\n      if (all().some((x) => keyOf(x) === keyOf(r.session))) {\n        errors.push({ fileName: name, error: '同じ記録がすでに読み込まれています' });\n        continue;\n      }\n      loaded.push(r.session);\n    }\n  ",
+  "  input.value = '';\n    draw();\n  }\n\n  function detail(session) {\n    const svg = createSvg('web');\n    renderWeb(svg, session, { markSilent: true });\n    const dlg = h('dialog', { class: 'detail' },\n",
+  "      h('div', { class: 'row' }, h('h3', {}, `${session.group}　${session.topic}`), h('button', { onClick: () => { dlg.close(); dlg.remove(); } }, '閉じる')),\n      svg,\n      memberTable(session, memberS",
+  "tats(session, 0)));\n    dlg.addEventListener('close', () => dlg.remove());\n    document.body.append(dlg);\n    dlg.showModal();\n  }\n\n  function card(session) {\n    const svg = createSvg('web');\n    ren",
+  "derWeb(svg, session, { markSilent: true });\n    const g = groupStats(session, 0);\n    return h('button', { class: 'card', onClick: () => detail(session) },\n      h('strong', {}, `${session.group}　${se",
+  "ssion.topic}`),\n      svg,\n      h('span', { class: 'hint' }, `発言${g.totalTurns}回・${formatSeconds(g.totalSeconds)}・0回の人${g.silentCount}人`));\n  }\n\n  function compareTable(sessions) {\n    const { header",
+  "s, rows } = compareRows(sessions);\n    return h('div', { class: 'table-wrap' }, h('table', { class: 'stats' },\n      h('thead', {}, h('tr', {}, ...headers.map((x) => h('th', {}, x)))),\n      h('tbody'",
+  ", {}, ...rows.map((r) => h('tr', {}, ...r.map((x) => h('td', {}, x)))))));\n  }\n\n  function draw() {\n    const sessions = all();\n    setChildren(body,\n      errors.length\n        ? h('div', { class: 'e",
+  "rrors' }, h('p', {}, '読み込めなかったファイル：'), h('ul', {}, ...errors.map((e) => h('li', {}, `${e.fileName}：${e.error}`))))\n        : null,\n      sessions.length\n        ? h('div', { class: 'row' },\n          ",
+  "h('button', { class: 'primary', onClick: () => downloadText(`班の比較_${todayString()}.csv`, csvForGroups(sessions), 'text/csv') }, '比較表を CSV で保存'),\n          loaded.length || errors.length ? h('button', ",
+  "{ onClick: () => { loaded = []; errors = []; draw(); } }, 'ファイルから読み込んだ分を閉じる') : null)\n        : null,\n      sessions.length ? compareTable(sessions) : null,\n      h('div', { class: 'cards' }, ...sessi",
+  "ons.map(card)));\n  }\n\n  draw();\n}\n\nreturn { renderTeacher };\n})();\n\nconst __m_app = (() => {\nconst { h } = __m_dom;\nconst { createStore } = __m_storage;\nconst { pause } = __m_model;\nconst { createRemo",
+  "te, flushOutbox } = __m_remote;\nconst { renderSetup } = __m_setup;\nconst { renderRecord } = __m_record;\nconst { renderResult } = __m_result;\nconst { renderTeacher } = __m_teacher;\n\nconst RESEND_MS = 3",
+  "0000;\n\nconst root = document.getElementById('app');\nconst store = createStore();\nconst remote = createRemote(); // Apps Script 版のときだけ。GitHub 版では null\nconst teacherCheck = remote ? remote.isTeacher().c",
+  "atch(() => false) : Promise.resolve(true);\nlet cleanup = null;\n\nfunction mount(render) {\n  if (cleanup) cleanup();\n  root.replaceChildren();\n  cleanup = render(root) || null;\n  window.scrollTo(0, 0);\n",
+  "}\n\nfunction goHome() {\n  mount(renderHome);\n}\n\nfunction newRecordQuestion(pending) {\n  if (pending.status !== 'ended') return `終わっていない記録（${pending.group}）は、新しい記録をはじめると消えます。続けますか？`;\n  if (!remote) retu",
+  "rn `前回の記録（${pending.group}）は、新しい記録をはじめると消えます。「提出用に保存」は済んでいますか？`;\n  const unsent = store.listOutbox().some((r) => r.id === pending.id);\n  return unsent\n    ? `前回の記録（${pending.group}）は、まだ先生に送れていません。送信待ち",
+  "として残り、通信がつながると自動で送ります。新しい記録をはじめますか？`\n    : null;\n}\n\nfunction goSetup() {\n  const pending = store.loadCurrent();\n  const question = pending && newRecordQuestion(pending);\n  if (question && !confirm(que",
+  "stion)) return;\n  mount((el) => renderSetup(el, {\n    store,\n    onStart: (session) => {\n      store.saveCurrent(session);\n      goRecord(session);\n    },\n    onCancel: goHome,\n  }));\n}\n\nfunction goRe",
+  "cord(session) {\n  mount((el) => renderRecord(el, session, { store, onEnd: () => goResult(session), onHome: goHome }));\n}\n\nfunction goResult(session) {\n  mount((el) => renderResult(el, session, { store",
+  ", remote, onBack: () => goRecord(session), onHome: goHome }));\n}\n\nfunction goTeacher() {\n  mount((el) => renderTeacher(el, { remote, onHome: goHome }));\n}\n\nfunction continueRecord(session) {\n  // 開き直し",
+  "たとき、タブを閉じていた間の時間は数えない\n  if (session.status === 'running') pause(session, session.savedAt ?? Date.now());\n  goRecord(session);\n}\n\nfunction pendingNotice(s) {\n  const ended = s.status === 'ended';\n  ret",
+  "urn h('div', { class: 'notice' },\n    h('p', {}, ended ? `前回の記録（${s.group}）の結果を見られます。` : `終わっていない記録があります（${s.group}）。`),\n    h('div', { class: 'row' },\n      h('button', { class: 'primary', onClick: (",
+  ") => (ended ? goResult(s) : continueRecord(s)) }, ended ? '結果を見る' : '続きから記録する'),\n      h('button', {\n        onClick: () => {\n          if (!confirm('この記録を破棄しますか？')) return;\n          store.clearCurre",
+  "nt();\n          goHome();\n        },\n      }, '破棄する')));\n}\n\nfunction renderHome(el) {\n  const pending = store.loadCurrent();\n  const teacherButton = h('button', { class: 'big', hidden: true, onClick: ",
+  "goTeacher }, '教師として使う');\n  teacherCheck.then((ok) => { teacherButton.hidden = !ok; });\n  el.append(h('section', { class: 'home' },\n    h('h1', {}, 'スパイダー討論'),\n    pending ? pendingNotice(pending) : nu",
+  "ll,\n    h('div', { class: 'home-buttons' },\n      h('button', { class: 'big primary', onClick: goSetup }, '記録係として使う'),\n      teacherButton),\n    h('p', { class: 'hint' }, 'はじめての人は、各画面の右上にある「？ 使い方」で手順を",
+  "確かめられます。')));\n}\n\nif (remote) {\n  const resend = () => flushOutbox(store, remote);\n  resend();\n  setInterval(resend, RESEND_MS);\n  window.addEventListener('online', resend);\n} else if ('serviceWorker' ",
+  "in navigator && location.protocol !== 'file:') {\n  navigator.serviceWorker.register('./sw.js').catch((err) => console.warn('サービスワーカーを登録できませんでした', err));\n}\n\ngoHome();\n\nreturn {  };\n})();\n</script>\n</bo",
+  "dy>\n</html>\n",
+];

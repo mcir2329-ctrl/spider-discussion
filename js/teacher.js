@@ -17,7 +17,8 @@ export function renderTeacher(root, { remote = null, onHome }) {
     h('p', {}, remote
       ? 'ファイルで提出された記録（.json）も、ここにドラッグするか、ボタンで選んで読み込めます。'
       : '提出された記録ファイル（.json）を、ここにドラッグするか、ボタンで選んでください。'),
-    h('label', { class: 'button' }, 'ファイルを選ぶ', input));
+    h('label', { class: 'button' }, 'ファイルを選ぶ', input),
+    remote ? null : h('p', { class: 'hint' }, '記録を自動で集めたいときは、', h('a', { href: 'setup.html' }, '設置のしかた'), 'を見てください。'));
 
   drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
   drop.addEventListener('dragleave', () => drop.classList.remove('over'));

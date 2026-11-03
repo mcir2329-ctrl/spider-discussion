@@ -45,13 +45,14 @@
 - 画面の切り替えは、動的 import をやめて通常の import にする（1 ファイルにまとめるため）。
 - サービスワーカーは GitHub 版でだけ登録する。
 
-## 5. Apps Script 用のまとめ
+## 5. Apps Script 用のまとめと設置
 
-- `npm run build:gas` で `gas/build/` に次を作る：
-  - `index.html`：`index.html` に CSS と全 JS を埋め込んだもの。各 JS ファイルは関数で包み、import を変数の受け渡しに置き換える。
-  - `Code.gs`、`appsscript.json`：`gas/` からコピー。
-  - `preview.html`：Google の代わりのにせもの付き（手元の確認用。Apps Script には送らない）。
-- Apps Script への送り込みは clasp を使う。使えない場合はファイルを貼り付ける手順を README に書く。
+Apps Script API は使わない（学校アカウントで有効にできなかったため）。先生の手作業は 1 回のコピー＆貼り付けだけにする。
+
+- `npm run build:gas` で次を作る：
+  - `deploy/apps-script.txt`：`gas/Code.gs` に画面の HTML（CSS と全 JS を埋め込んだもの）を文字列として入れた 1 ファイル。`@OnlyCurrentDoc` を付け、権限をこのスプレッドシートだけに絞る。
+  - `gas/build/preview.html`：Google の代わりのにせもの付き（手元の確認用）。
+- `setup.html`（公開サイト）：先生用の設置ページ。「コードをコピー」で `deploy/apps-script.txt` をコピーし、手順どおりスプレッドシートの Apps Script に貼ってウェブアプリとして公開する。
 
 ## 6. テスト
 

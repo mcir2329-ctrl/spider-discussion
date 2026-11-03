@@ -45,6 +45,25 @@ function load(user = TEACHER) {
   return ctx;
 }
 
+test('貼り付け用の1ファイルだけで、画面を返し記録も受け取れる', () => {
+  const single = readFileSync(new URL('../deploy/apps-script.txt', import.meta.url), 'utf8');
+  eq(single.includes('createHtmlOutputFromFile'), false);
+  eq(single.includes('@OnlyCurrentDoc'), true);
+  const g = load(STUDENT);
+  g.HtmlService = {
+    createHtmlOutput: (html) => {
+      const out = { html, setTitle: () => out, addMetaTag: () => out };
+      return out;
+    },
+  };
+  vm.runInContext(single, g);
+  const page = g.doGet().html;
+  eq(page.includes('const __m_app'), true);
+  eq(page.includes('スパイダー討論'), true);
+  eq(page.startsWith('<!doctype html>'), true);
+  eq(g.submitRecord(JSON.stringify(record())), { ok: true });
+});
+
 function record(group = '3班', date = '2026-11-03') {
   const members = [{ id: 'm1', name: '1', x: 0.3, y: 0.5 }, { id: 'm2', name: '2', x: 0.7, y: 0.5 }];
   const s = start(createSession({ group, topic: 'テーマ', date, layout: 'free', members, types: DEFAULT_TYPES }), 0);

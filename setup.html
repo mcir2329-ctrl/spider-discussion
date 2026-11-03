@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>スパイダー討論 設置のしかた</title>
+<meta name="theme-color" content="#1d3557">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/style.css">
+<style>
+  .install { width: 100%; max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; line-height: 1.7; }
+  .install h1 { font-size: 26px; margin: 0 0 8px; }
+  .install .lead { color: var(--muted); margin: 0 0 24px; }
+  .install section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px; margin-bottom: 12px; }
+  .install h2 { display: flex; align-items: center; gap: 10px; font-size: 18px; margin: 0 0 8px; }
+  .install h2 .n { flex: none; width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-size: 16px; }
+  .install p { margin: 6px 0; }
+  .install ul { margin: 6px 0; padding-left: 22px; }
+  .install a.button { text-decoration: none; }
+  .install a.button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .install code { background: #f1f4f8; padding: 1px 6px; border-radius: 4px; }
+  #copied { font-weight: 600; color: #1f7a3a; }
+  #manual { display: none; width: 100%; height: 160px; margin-top: 8px; font-family: monospace; font-size: 12px; }
+</style>
+</head>
+<body>
+<main class="install">
+  <h1>スパイダー討論 設置のしかた（先生用）</h1>
+  <p class="lead">記録係が「終了」すると、記録が先生のスプレッドシートに自動で集まる版を設置します。学校の Google アカウントで 10 分ほどで終わります。最初の 1 回だけ必要です。生徒は学校アカウントで開くので、ほかのアカウントは要りません。</p>
+
+  <section>
+    <h2><span class="n">1</span>新しいスプレッドシートを作る</h2>
+    <p>Chrome で<strong>学校の Google アカウント</strong>になっていることを確かめて、下のボタンを押します。名前は「スパイダー討論 記録」などにします。</p>
+    <p><a class="button primary" href="https://sheets.new" target="_blank" rel="noopener">新しいスプレッドシートを開く</a></p>
+  </section>
+
+  <section>
+    <h2><span class="n">2</span>Apps Script を開く</h2>
+    <p>スプレッドシートのメニューの「拡張機能」→「Apps Script」を押します。</p>
+  </section>
+
+  <section>
+    <h2><span class="n">3</span>コードをコピーして貼り付ける</h2>
+    <p><button id="copy" class="primary">コードをコピー</button> <span id="copied"></span></p>
+    <p>Apps Script の画面で、最初から入っている文字を全部消して（Ctrl+A → Delete）、貼り付けます（Ctrl+V）。Ctrl+S で保存します。</p>
+    <textarea id="manual" readonly aria-label="コード"></textarea>
+  </section>
+
+  <section>
+    <h2><span class="n">4</span>ウェブアプリとして公開する</h2>
+    <p>右上の「デプロイ」→「新しいデプロイ」を押し、左の歯車で「ウェブアプリ」を選びます。設定は次のとおりです。</p>
+    <ul>
+      <li>次のユーザーとして実行：<strong>自分</strong></li>
+      <li>アクセスできるユーザー：<strong>（学校名）内の全員</strong></li>
+    </ul>
+    <p>「デプロイ」を押します。「アクセスを承認」と出たら、自分の学校アカウントを選んで許可します。</p>
+  </section>
+
+  <section>
+    <h2><span class="n">5</span>URL を生徒に配る</h2>
+    <p>「ウェブアプリ」の URL（<code>https://script.google.com/…/exec</code>）をコピーして、Classroom で配ります。</p>
+    <p>先生がその URL を開くと「教師として使う」が出ます。生徒には出ません。</p>
+  </section>
+
+  <section>
+    <h2>うまくいかないとき</h2>
+    <ul>
+      <li>「（学校名）内の全員」が選べないときは、学校の管理設定で制限されています。情報担当の先生に確認してください。</li>
+      <li>アプリを新しくするときは、手順 3 と同じように貼り替えて保存し、「デプロイ」→「デプロイを管理」→ 鉛筆のアイコン →「バージョン」を「新バージョン」にして「デプロイ」を押します。URL は変わりません。</li>
+    </ul>
+  </section>
+</main>
+<script>
+  const copyBtn = document.getElementById('copy');
+  const copied = document.getElementById('copied');
+  const manual = document.getElementById('manual');
+
+  async function loadCode() {
+    const res = await fetch('deploy/apps-script.txt', { cache: 'no-store' });
+    if (!res.ok) throw new Error(String(res.status));
+    return res.text();
+  }
+
+  // 押した直後にコピーできるよう、先に読み込んでおく
+  let preloaded = loadCode().catch(() => null);
+
+  copyBtn.addEventListener('click', async () => {
+    copied.textContent = '';
+    let code;
+    try {
+      code = (await preloaded) ?? await loadCode();
+    } catch {
+      copied.textContent = 'コードを読み込めませんでした。通信を確かめて、もう一度押してください。';
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(code);
+      copied.textContent = `コピーしました（${code.split('\n').length} 行）`;
+    } catch {
+      manual.value = code;
+      manual.style.display = 'block';
+      manual.select();
+      copied.textContent = '自動でコピーできませんでした。下の枠の中を Ctrl+A → Ctrl+C でコピーしてください。';
+    }
+  });
+</script>
+</body>
+</html>

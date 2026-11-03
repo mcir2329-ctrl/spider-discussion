@@ -1,6 +1,6 @@
 // Apps Script 用に、アプリを 1 つの HTML（gas/build/index.html）にまとめる。
 // 各 JS ファイルを関数で包み、import を「前にまとめたファイルの戻り値から取り出す」形に置き換える。
-import { readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 
 const ORDER = ['dom', 'model', 'web', 'storage', 'remote', 'guide', 'setup', 'record', 'result', 'teacher', 'app'];
 const OUT = 'gas/build';
@@ -29,11 +29,19 @@ const html = read('index.html')
   .replace('<script type="module" src="js/app.js"></script>', () => `<script>\n${bundle}</script>`);
 if (!html.includes('const __m_app')) throw new Error('index.html に JS を埋め込めませんでした');
 
+// Apps Script のエディタに 1 回貼るだけで動くよう、画面の HTML を Code.gs の中に文字列として埋め込む。
+// エディタが重くならないよう、長い 1 行にせず短い行に分ける
+function singleFile() {
+  const chunks = html.match(/[\s\S]{1,200}/g).map((c) => `  ${JSON.stringify(c)},`);
+  const code = read('gas/Code.gs');
+  const body = code.replace("HtmlService.createHtmlOutputFromFile('index')", 'HtmlService.createHtmlOutput(INDEX_HTML.join(\'\'))');
+  if (body === code) throw new Error('Code.gs の doGet を置き換えられませんでした');
+  return `/** @OnlyCurrentDoc */\n${body}\n// 画面の HTML（npm run build:gas で作られる。直接は編集しない）\nvar INDEX_HTML = [\n${chunks.join('\n')}\n];\n`;
+}
+
 mkdirSync(OUT, { recursive: true });
-writeFileSync(`${OUT}/index.html`, html);
-writeFileSync(`${OUT}/bundle.check.js`, bundle); // 構文チェック用（Apps Script には送らない）
+mkdirSync('deploy', { recursive: true });
+writeFileSync(`${OUT}/bundle.check.js`, bundle); // 構文チェック用
 writeFileSync(`${OUT}/preview.html`, html.replace('<script>\n', () => `<script>\n${read('tests/fake-gas.js')}\n</script>\n<script>\n`));
-copyFileSync('gas/Code.gs', `${OUT}/Code.gs`);
-copyFileSync('gas/appsscript.json', `${OUT}/appsscript.json`);
-writeFileSync(`${OUT}/.claspignore`, 'preview.html\nbundle.check.js\n');
-console.log(`${OUT}/index.html (${Math.round(html.length / 1024)} KB)`);
+writeFileSync('deploy/apps-script.txt', singleFile());
+console.log(`deploy/apps-script.txt (${Math.round(singleFile().length / 1024)} KB)`);
