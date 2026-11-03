@@ -1,6 +1,7 @@
 import { h, setChildren } from './dom.js';
 import { start, pause, resume, addTurn, setTurnType, undo, end, elapsed, formatSeconds } from './model.js';
 import { createSvg, renderWeb } from './web.js';
+import { guideButton, showGuideOnce } from './guide.js';
 
 const DOUBLE_TAP_MS = 600; // 同じ席をこれより短い間隔で続けて押したときは押し間違いとみなす
 const SLEEP_GAP_MS = 90000; // タイマーがこれ以上止まっていたら、ふたを閉じるなどで端末が休止していたとみなす
@@ -22,7 +23,8 @@ export function renderRecord(root, session, { store, onEnd, onHome }) {
     h('header', { class: 'bar' },
       h('button', { onClick: () => { act(() => pause(session, Date.now())); onHome(); } }, '← ホーム'),
       h('h2', {}, `${session.group}　${session.topic}`),
-      timer),
+      timer,
+      guideButton('record')),
     warn,
     sleepNote,
     h('div', { class: 'stage' }, svg),
@@ -108,6 +110,7 @@ export function renderRecord(root, session, { store, onEnd, onHome }) {
   const saveId = setInterval(save, 5000);
   window.addEventListener('pagehide', save);
   draw();
+  if (session.status === 'ready') showGuideOnce('record', store);
 
   return () => {
     clearInterval(timerId);

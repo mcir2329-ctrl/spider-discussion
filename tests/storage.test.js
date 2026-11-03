@@ -58,6 +58,20 @@ test('送信待ちは記録番号ごとに 1 件で、送れたものを消せ�
   eq(store.listOutbox(), [{ id: 'a', v: 2 }]);
 });
 
+test('使い方ガイドを見たかどうかを画面ごとに覚える', () => {
+  const store = createStore(fakeBackend());
+  eq(store.hasSeenGuide('record'), false);
+  store.markGuideSeen('record');
+  eq(store.hasSeenGuide('record'), true);
+  eq(store.hasSeenGuide('setup'), false);
+});
+
+test('端末の保存が使えないときは、ガイドを見ていないものとして扱う', () => {
+  const store = createStore(null);
+  store.markGuideSeen('record');
+  eq(store.hasSeenGuide('record'), false);
+});
+
 test(`準備の設定は最大 ${MAX_SETUPS} 件で、古いものから消える`, () => {
   const store = createStore(fakeBackend());
   for (let i = 0; i < 12; i++) store.saveSetup({ group: `g${i}` });

@@ -86,6 +86,24 @@ button.card .web { border: none; }
 dialog.detail { width: min(1100px, 95vw); max-height: 92vh; border: none; border-radius: 12px; padding: 16px; }
 dialog.detail .row { justify-content: space-between; }
 
+button.guide-btn { border-color: var(--accent); color: var(--accent); font-weight: 600; white-space: nowrap; }
+dialog.guide { width: min(760px, 94vw); max-height: 92vh; border: none; border-radius: 12px; padding: 20px 24px; color: var(--ink); }
+dialog.guide::backdrop { background: rgba(29, 39, 51, 0.45); }
+.guide-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.guide-head h3 { margin: 0; font-size: 20px; }
+.guide-steps { margin: 16px 0; padding: 0; list-style: none; counter-reset: step; display: flex; flex-direction: column; gap: 10px; }
+.guide-steps li { counter-increment: step; display: flex; gap: 12px; align-items: flex-start; line-height: 1.6; }
+.guide-steps li::before {
+  content: counter(step); flex: none; width: 28px; height: 28px; border-radius: 50%;
+  background: var(--accent); color: var(--accent-ink); font-weight: 700; display: grid; place-items: center;
+}
+.guide-figure { margin: 0 0 16px; }
+.guide-figure .web { max-width: 420px; margin: 0 auto; }
+.guide-figure figcaption { margin-top: 8px; font-size: 14px; color: var(--muted); line-height: 1.6; }
+.guide-tips { background: #f1f4f8; border-radius: 8px; padding: 10px 16px; margin-bottom: 16px; }
+.guide-tips ul { margin: 6px 0 0; padding-left: 20px; line-height: 1.7; }
+.home .hint { margin-top: 16px; }
+
 @media (max-width: 900px) {
   .result { grid-template-columns: 1fr; }
 }

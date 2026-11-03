@@ -104,7 +104,7 @@ export function renderTeacher(root, { remote = null, onHome }) {
     const svg = createSvg('web');
     renderWeb(svg, session, { markSilent: true });
     const dlg = h('dialog', { class: 'detail' },
-      h('div', { class: 'row' }, h('h3', {}, `${session.group}　${session.topic}`), h('button', { onClick: () => dlg.close() }, '閉じる')),
+      h('div', { class: 'row' }, h('h3', {}, `${session.group}　${session.topic}`), h('button', { onClick: () => { dlg.close(); dlg.remove(); } }, '閉じる')),
       svg,
       memberTable(session, memberStats(session, 0)));
     dlg.addEventListener('close', () => dlg.remove());

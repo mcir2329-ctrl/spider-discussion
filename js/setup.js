@@ -1,6 +1,7 @@
 import { h, setChildren } from './dom.js';
 import { DEFAULT_TYPES, MIN_MEMBERS, MAX_MEMBERS, MAX_TYPES, layoutPositions, createSession, todayString } from './model.js';
 import { createSvg, renderWeb } from './web.js';
+import { guideButton, showGuideOnce } from './guide.js';
 
 const LAYOUTS = [['circle', '円形'], ['rect', '長方形'], ['free', '自由配置']];
 const range = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
@@ -23,7 +24,7 @@ export function renderSetup(root, { store, onStart, onCancel }) {
   const error = h('p', { class: 'error' });
   preview.addEventListener('contextmenu', (e) => e.preventDefault());
 
-  root.append(h('header', { class: 'bar' }, h('button', { onClick: onCancel }, '← もどる'), h('h2', {}, '準備')), form);
+  root.append(h('header', { class: 'bar' }, h('button', { onClick: onCancel }, '← もどる'), h('h2', {}, '準備'), guideButton('setup')), form);
 
   function redrawPreview() {
     renderWeb(preview, { members: setup.members, types: setup.types, turns: [] }, { onSeatDown: startDrag, showCounts: false });
@@ -121,4 +122,5 @@ export function renderSetup(root, { store, onStart, onCancel }) {
   }
 
   draw();
+  showGuideOnce('setup', store);
 }

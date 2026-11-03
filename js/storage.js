@@ -1,6 +1,7 @@
 const CURRENT = 'spider.current';
 const SETUPS = 'spider.setups';
 const OUTBOX = 'spider.outbox';
+const GUIDES = 'spider.guidesSeen';
 export const MAX_SETUPS = 10;
 
 function defaultBackend() {
@@ -49,6 +50,11 @@ export function createStore(backend = defaultBackend()) {
       return write(OUTBOX, [...others, record]);
     },
     removeOutbox: (id) => write(OUTBOX, read(OUTBOX, []).filter((r) => r.id !== id)),
+    hasSeenGuide: (name) => read(GUIDES, []).includes(name),
+    markGuideSeen(name) {
+      const seen = read(GUIDES, []);
+      return seen.includes(name) || write(GUIDES, [...seen, name]);
+    },
   };
 }
 

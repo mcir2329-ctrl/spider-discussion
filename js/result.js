@@ -3,6 +3,7 @@ import { reopen, memberStats, groupStats, toExport, fileBaseName, formatSeconds,
 import { createSvg, renderWeb, svgToPngBlob } from './web.js';
 import { downloadText, downloadBlob } from './storage.js';
 import { flushOutbox } from './remote.js';
+import { guideButton, showGuideOnce } from './guide.js';
 
 const STATUS_CHECK_MS = 5000;
 
@@ -66,7 +67,8 @@ export function renderResult(root, session, { store, remote = null, onBack, onHo
   }
 
   root.append(
-    h('header', { class: 'bar' }, h('button', { onClick: onHome }, '← ホーム'), h('h2', {}, `結果：${session.group}`)),
+    h('header', { class: 'bar' }, h('button', { onClick: onHome }, '← ホーム'), h('h2', {}, `結果：${session.group}`),
+      guideButton('result', { remote: !!remote })),
     h('div', { class: 'result' },
       h('div', { class: 'stage' }, svg),
       h('div', { class: 'side' },
@@ -88,5 +90,6 @@ export function renderResult(root, session, { store, remote = null, onBack, onHo
           }, '記録に戻る')),
         status)));
 
+  showGuideOnce('result', store, { remote: !!remote });
   return () => clearInterval(checkId);
 }

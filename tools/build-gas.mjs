@@ -2,7 +2,7 @@
 // 各 JS ファイルを関数で包み、import を「前にまとめたファイルの戻り値から取り出す」形に置き換える。
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'node:fs';
 
-const ORDER = ['dom', 'model', 'web', 'storage', 'remote', 'setup', 'record', 'result', 'teacher', 'app'];
+const ORDER = ['dom', 'model', 'web', 'storage', 'remote', 'guide', 'setup', 'record', 'result', 'teacher', 'app'];
 const OUT = 'gas/build';
 const read = (p) => readFileSync(p, 'utf8');
 

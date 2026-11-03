@@ -1,7 +1,7 @@
-const CACHE = 'spider-v3';
+const CACHE = 'spider-v4';
 const FILES = [
   './', 'index.html', 'manifest.json', 'icon.svg', 'css/style.css',
-  'js/app.js', 'js/dom.js', 'js/model.js', 'js/web.js', 'js/storage.js', 'js/remote.js',
+  'js/app.js', 'js/dom.js', 'js/model.js', 'js/web.js', 'js/storage.js', 'js/remote.js', 'js/guide.js',
   'js/setup.js', 'js/record.js', 'js/result.js', 'js/teacher.js',
 ];
 

@@ -1,0 +1,9 @@
+{
+  "name": "ic-reflection",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node tests/run.mjs",
+    "build:gas": "node tools/build-gas.mjs"
+  }
+}

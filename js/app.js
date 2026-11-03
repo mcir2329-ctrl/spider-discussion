@@ -91,7 +91,8 @@ function renderHome(el) {
     pending ? pendingNotice(pending) : null,
     h('div', { class: 'home-buttons' },
       h('button', { class: 'big primary', onClick: goSetup }, '記録係として使う'),
-      teacherButton)));
+      teacherButton),
+    h('p', { class: 'hint' }, 'はじめての人は、各画面の右上にある「？ 使い方」で手順を確かめられます。')));
 }
 
 if (remote) {
