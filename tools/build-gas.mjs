@@ -16,11 +16,15 @@ function wrap(name) {
   const exports = [...code.matchAll(/^export (?:async )?(?:function|const) (\w+)/gm)].map((m) => m[1]);
   if (/^export (?!(?:async )?(?:function|const) )/m.test(code)) throw new Error(`${name}.js にまとめられない export があります`);
   code = code.replace(/^export /gm, '');
+  // Apps Script の HtmlService は // を文字列の中でもコメントとして消す（'http://…' が途中で切れる）。
+  // コメントは先に取り除き、文字列の :// は同じ意味の :\/\/ に書き換える
+  code = code.replace(/^\s*\/\/.*\r?\n/gm, '').replace(/\s+\/\/ .*$/gm, '').replace(/:\/\//g, ':\\/\\/');
   return `const __m_${name} = (() => {\n${code}\nreturn { ${exports.join(', ')} };\n})();\n`;
 }
 
 const bundle = ORDER.map(wrap).join('\n');
 if (/<\/script/i.test(bundle)) throw new Error('JS の中に </script が含まれています');
+if (bundle.includes('//')) throw new Error(`JS に // が残っています: ${bundle.slice(bundle.indexOf('//') - 40, bundle.indexOf('//') + 40)}`);
 
 const html = read('index.html')
   .replace(/<link rel="manifest"[^>]*>\r?\n/, '')

@@ -61,6 +61,8 @@ test('貼り付け用の1ファイルだけで、画面を返し記録も受け�
   eq(page.includes('const __m_app'), true);
   eq(page.includes('スパイダー討論'), true);
   eq(page.startsWith('<!doctype html>'), true);
+  // HtmlService は文字列の中の // まで「コメント」として消すので、1つも残してはいけない
+  eq(page.includes('//'), false);
   eq(g.submitRecord(JSON.stringify(record())), { ok: true });
 });
 
